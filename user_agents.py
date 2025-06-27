@@ -4,37 +4,40 @@ from typing import List
 from pool_agents import PoolAgent
 from pydantic import BaseModel, Field
 
+class UserMultiPoolReturn(BaseModel):
+    pool_id: int = Field(..., description="The pool id to delegate to")
+    stake_amount: float = Field(..., description="The stake amount to delegate")
+
+class UserMultiPoolReturnList(BaseModel):
+    allocations: List[UserMultiPoolReturn]
+
 class UserAgent:
     def __init__(self, user_id: int, stake: float, llm):
         self.user_id = user_id
         self.stake = stake
         self.llm = llm
-        self.delegated_pool = None
+        self.stake_allocation: List[UserMultiPoolReturn] = []
         self.reward_history = []
 
-    def choose_pool(self, pools: List[PoolAgent], max_stake: float = 10000):
-        pools_summary = "\n".join(
-            [f"Pool {p.pool_id}: pledge={p.pledge:.1f}, margin={p.margin:.2f}, cost={p.cost:.1f}, total_stake={p.stake_delegated + p.pledge:.1f}"
-            for p in pools]
-        )
+    def choose_pools(
+        self,
+        pool_state_summary: str,
+        user_delegation_summary: str,
+        saturation_size: float
+    ):
         prompt = (
-            f"You have up to {max_stake:.1f} ADA to delegate.\n"
-            f"Given these pools:\n{pools_summary}\n"
-            "Reply the pool id to delegate to and the stake amount to delegate to maximize your reward.\n"
+            f"You are a Cardano user with {self.stake:.1f} ADA to delegate.\n\n"
+            f"--- POOL PARAMETERS (current round) ---\n{pool_state_summary}\n\n"
+            f"--- USER DELEGATIONS (last round) ---\n{user_delegation_summary}\n\n"
+            f"Saturation size per pool is {saturation_size:.1f} ADA.\n\n"
+            "Rules:\n"
+            "- Pools get no additional reward after saturation.\n"
+            "- Margin reduces your share of the reward.\n"
+            "- Higher pledge increases pool's reward (via a0).\n"
+            "- You can split your stake across pools.\n\n"
+            "Return a list of allocations (pool_id and stake_amount) that best maximize your expected reward."
         )
 
-        structured_llm = self.llm.with_structured_output(UserAgentReturn)
+        structured_llm = self.llm.with_structured_output(UserMultiPoolReturnList)
         resp = structured_llm.invoke([HumanMessage(content=prompt)])
-        pool_id, stake_amount = resp.pool_id, resp.stake_amount
-        
-        if stake_amount > max_stake:
-            stake_amount = max_stake
-        if any(p.pool_id == pool_id for p in pools):
-            self.delegated_pool = pool_id
-            self.stake = stake_amount
-        else:
-            raise ValueError(f"Pool {pool_id} not found")
-
-class UserAgentReturn(BaseModel):
-    pool_id: int = Field(..., description="The pool id to delegate to")
-    stake_amount: float = Field(..., description="The stake amount to delegate")
+        self.stake_allocation = resp.allocations

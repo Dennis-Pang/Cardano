@@ -8,14 +8,15 @@ class PoolAgent:
         self.margin = margin
         self.cost = cost
         self.llm = llm
-
         self.stake_delegated = 0.0
         self.reward = 0.0
         self.profit_history = []
 
     def compute_reward(self, total_rewards, s_opt, a0):
         s = self.stake_delegated + self.pledge
+        
         saturation_factor = min(s / s_opt, 1.0) if s > 0 else 0.0
+        # print("saturation factor",saturation_factor)
         self.reward = max(
             (total_rewards * saturation_factor) * (1 - a0 * (self.pledge / s if s > 0 else 0)) - self.cost,
             0.0,

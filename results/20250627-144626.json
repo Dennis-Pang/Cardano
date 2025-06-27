@@ -1,0 +1,1012 @@
+[
+  {
+    "round": 1,
+    "pools": [
+      {
+        "pool_id": 1,
+        "pledge": 150000.0,
+        "margin": 0.03,
+        "cost": 500.0,
+        "stake_delegated": 8467776.58,
+        "reward": 995228.2897551373,
+        "profit": 994243.2897551373
+      },
+      {
+        "pool_id": 2,
+        "pledge": 1020000.0,
+        "margin": 0.025,
+        "cost": 800.0,
+        "stake_delegated": 12463637.48,
+        "reward": 978228.7595654237,
+        "profit": 976648.7595654237
+      },
+      {
+        "pool_id": 3,
+        "pledge": 500000.0,
+        "margin": 0.015,
+        "cost": 1800.0,
+        "stake_delegated": 6574865.03,
+        "reward": 979170.95857567,
+        "profit": 975597.95857567
+      }
+    ],
+    "users": [
+      {
+        "user_id": 1,
+        "allocations": [
+          {
+            "pool_id": 2,
+            "stake_amount": 266779.2
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 266779.2
+          }
+        ],
+        "reward": 55823.89161337351
+      },
+      {
+        "user_id": 2,
+        "allocations": [
+          {
+            "pool_id": 2,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 1,
+            "stake_amount": 1771120.0
+          }
+        ],
+        "reward": 555315.7178356098
+      },
+      {
+        "user_id": 3,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 400000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 400000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 445193.3
+          }
+        ],
+        "reward": 134180.825495935
+      },
+      {
+        "user_id": 4,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 415754.85
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 415754.85
+          }
+        ],
+        "reward": 75890.28391657163
+      },
+      {
+        "user_id": 5,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 131803.6
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 131803.6
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 131803.6
+          }
+        ],
+        "reward": 42167.790564410316
+      },
+      {
+        "user_id": 6,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 131799.83
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 131799.83
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 131799.83
+          }
+        ],
+        "reward": 42166.584432176984
+      },
+      {
+        "user_id": 7,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 117298.3
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 117500.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 119500.0
+          }
+        ],
+        "reward": 37844.11647413382
+      },
+      {
+        "user_id": 8,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 5000000.0
+          }
+        ],
+        "reward": 1599644.8717793107
+      },
+      {
+        "user_id": 9,
+        "allocations": [
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 336630.5
+          }
+        ],
+        "reward": 82179.8454764122
+      },
+      {
+        "user_id": 10,
+        "allocations": [
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 1,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 143158.6
+          }
+        ],
+        "reward": 110937.03445283335
+      }
+    ]
+  },
+  {
+    "round": 2,
+    "pools": [
+      {
+        "pool_id": 1,
+        "pledge": 200000.0,
+        "margin": 0.025,
+        "cost": 450.0,
+        "stake_delegated": 1533558.4,
+        "reward": 327211.67999999993,
+        "profit": 326322.92999999993
+      },
+      {
+        "pool_id": 2,
+        "pledge": 1500000.0,
+        "margin": 0.025,
+        "cost": 750.0,
+        "stake_delegated": 6149491.6,
+        "reward": 956519.1493801317,
+        "profit": 955037.8993801317
+      },
+      {
+        "pool_id": 3,
+        "pledge": 600000.0,
+        "margin": 0.02,
+        "cost": 2000.0,
+        "stake_delegated": 7316950.0,
+        "reward": 979010.9300942183,
+        "profit": 975050.9300942182
+      }
+    ],
+    "users": [
+      {
+        "user_id": 1,
+        "allocations": [
+          {
+            "pool_id": 3,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 1,
+            "stake_amount": 33558.4
+          }
+        ],
+        "reward": 68008.36196673725
+      },
+      {
+        "user_id": 2,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 1771120.0
+          }
+        ],
+        "reward": 868890.5342900606
+      },
+      {
+        "user_id": 3,
+        "allocations": [
+          {
+            "pool_id": 3,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 1,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 245193.3
+          }
+        ],
+        "reward": 187839.65244670853
+      },
+      {
+        "user_id": 4,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 831509.7
+          }
+        ],
+        "reward": 102577.88888347424
+      },
+      {
+        "user_id": 5,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 50000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 345410.8
+          }
+        ],
+        "reward": 49115.05209255242
+      },
+      {
+        "user_id": 6,
+        "allocations": [
+          {
+            "pool_id": 3,
+            "stake_amount": 395399.5
+          }
+        ],
+        "reward": 48777.83864166741
+      },
+      {
+        "user_id": 7,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 354298.3
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 46087.05878520815
+      },
+      {
+        "user_id": 8,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 2493720.9
+          }
+        ],
+        "reward": 307633.9643260895
+      },
+      {
+        "user_id": 9,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 336630.5
+          }
+        ],
+        "reward": 106567.80277836241
+      },
+      {
+        "user_id": 10,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 1000000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 143158.6
+          }
+        ],
+        "reward": 206187.01036759256
+      }
+    ]
+  },
+  {
+    "round": 3,
+    "pools": [
+      {
+        "pool_id": 1,
+        "pledge": 250000.0,
+        "margin": 0.04,
+        "cost": 500.0,
+        "stake_delegated": 3176703.0,
+        "reward": 662890.6,
+        "profit": 661910.5999999999
+      },
+      {
+        "pool_id": 2,
+        "pledge": 2000000.0,
+        "margin": 0.025,
+        "cost": 500.0,
+        "stake_delegated": 5245410.8,
+        "reward": 932537.9770643471,
+        "profit": 931550.477064347
+      },
+      {
+        "pool_id": 3,
+        "pledge": 800000.0,
+        "margin": 0.025,
+        "cost": 2500.0,
+        "stake_delegated": 6577886.2,
+        "reward": 972922.9794141903,
+        "profit": 967985.4794141902
+      }
+    ],
+    "users": [
+      {
+        "user_id": 1,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 33558.4
+          }
+        ],
+        "reward": 71853.46949880858
+      },
+      {
+        "user_id": 2,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 1000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 2000000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 3771120.0
+          }
+        ],
+        "reward": 961919.7666830921
+      },
+      {
+        "user_id": 3,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 245193.3
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 1000000.0
+          }
+        ],
+        "reward": 179764.86742659897
+      },
+      {
+        "user_id": 4,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 831509.7
+          }
+        ],
+        "reward": 159155.2365844285
+      },
+      {
+        "user_id": 5,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 395410.8
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 53298.043442048074
+      },
+      {
+        "user_id": 6,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 50000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 200000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 145399.5
+          }
+        ],
+        "reward": 55842.51197355583
+      },
+      {
+        "user_id": 7,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 50000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 150000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 154298.3
+          }
+        ],
+        "reward": 50284.99306631508
+      },
+      {
+        "user_id": 8,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 1000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 993720.9
+          }
+        ],
+        "reward": 390800.4656508628
+      },
+      {
+        "user_id": 9,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 336630.5
+          }
+        ],
+        "reward": 112111.62994430703
+      },
+      {
+        "user_id": 10,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 1000000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 143158.6
+          }
+        ],
+        "reward": 153807.84562994822
+      }
+    ]
+  },
+  {
+    "round": 4,
+    "pools": [
+      {
+        "pool_id": 1,
+        "pledge": 300000.0,
+        "margin": 0.03,
+        "cost": 450.0,
+        "stake_delegated": 6702266.9,
+        "reward": 988712.1517946902,
+        "profit": 987825.6517946902
+      },
+      {
+        "pool_id": 2,
+        "pledge": 2500000.0,
+        "margin": 0.035,
+        "cost": 550.0,
+        "stake_delegated": 4453150.0,
+        "reward": 906522.1519722927,
+        "profit": 905441.4019722927
+      },
+      {
+        "pool_id": 3,
+        "pledge": 1000000.0,
+        "margin": 0.035,
+        "cost": 2700.0,
+        "stake_delegated": 3844583.1,
+        "reward": 878416.62,
+        "profit": 873111.12
+      }
+    ],
+    "users": [
+      {
+        "user_id": 1,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 157364.5
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 376193.9
+          }
+        ],
+        "reward": 90854.0679351489
+      },
+      {
+        "user_id": 2,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 1771120.0
+          }
+        ],
+        "reward": 925211.2894572807
+      },
+      {
+        "user_id": 3,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 245193.3
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 500000.0
+          }
+        ],
+        "reward": 194157.44122277337
+      },
+      {
+        "user_id": 4,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 250000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 250000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 331509.7
+          }
+        ],
+        "reward": 129502.86477796007
+      },
+      {
+        "user_id": 5,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 395410.8
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 53983.76814250694
+      },
+      {
+        "user_id": 6,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 395399.5
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 54156.101359498745
+      },
+      {
+        "user_id": 7,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 154298.3
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 200000.0
+          }
+        ],
+        "reward": 48458.801494487285
+      },
+      {
+        "user_id": 8,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 1993720.9
+          }
+        ],
+        "reward": 436122.78647342615
+      },
+      {
+        "user_id": 9,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 336630.5
+          }
+        ],
+        "reward": 114369.66455266537
+      },
+      {
+        "user_id": 10,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 643158.6
+          }
+        ],
+        "reward": 187080.5287519979
+      }
+    ]
+  },
+  {
+    "round": 5,
+    "pools": [
+      {
+        "pool_id": 1,
+        "pledge": 350000.0,
+        "margin": 0.035,
+        "cost": 500.0,
+        "stake_delegated": 10407364.7,
+        "reward": 991144.5704174996,
+        "profit": 990162.0704174996
+      },
+      {
+        "pool_id": 2,
+        "pledge": 3000000.0,
+        "margin": 0.03,
+        "cost": 600.0,
+        "stake_delegated": 4266519.5,
+        "reward": 888610.1509461399,
+        "profit": 887428.1509461399
+      },
+      {
+        "pool_id": 3,
+        "pledge": 1500000.0,
+        "margin": 0.035,
+        "cost": 2500.0,
+        "stake_delegated": 2832394.9,
+        "reward": 703778.98,
+        "profit": 698866.48
+      }
+    ],
+    "users": [
+      {
+        "user_id": 1,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 33558.4
+          }
+        ],
+        "reward": 69311.05123397434
+      },
+      {
+        "user_id": 2,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 1771120.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 673398.9508917251
+      },
+      {
+        "user_id": 3,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 1245193.3
+          }
+        ],
+        "reward": 220663.30902033212
+      },
+      {
+        "user_id": 4,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 157364.7
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 174145.0
+          }
+        ],
+        "reward": 108354.41364945902
+      },
+      {
+        "user_id": 5,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 395410.8
+          }
+        ],
+        "reward": 70071.57487144908
+      },
+      {
+        "user_id": 6,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 395399.5
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 50108.26452960969
+      },
+      {
+        "user_id": 7,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 50000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 300000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 4298.3
+          }
+        ],
+        "reward": 43269.65004233914
+      },
+      {
+        "user_id": 8,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 5000000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 0.0
+          }
+        ],
+        "reward": 448948.1119966777
+      },
+      {
+        "user_id": 9,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 200000.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 300000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 336630.5
+          }
+        ],
+        "reward": 115631.37763851573
+      },
+      {
+        "user_id": 10,
+        "allocations": [
+          {
+            "pool_id": 1,
+            "stake_amount": 0.0
+          },
+          {
+            "pool_id": 2,
+            "stake_amount": 500000.0
+          },
+          {
+            "pool_id": 3,
+            "stake_amount": 643158.6
+          }
+        ],
+        "reward": 177339.57765750733
+      }
+    ]
+  }
+]
