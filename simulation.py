@@ -5,14 +5,16 @@ import time
 from typing import List, Dict
 import numpy as np
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from user_agents import UserAgent
 from pool_agents import PoolAgent
 from constants import TOTAL_REWARDS, S_OPT, A0
 
+
 # Load environment variables
-load_dotenv()
-os.environ["OPENAI_API_KEY"] = "your_api_key_here"
+# Explicitly load the .env file from the script's directory to ensure it's found.
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+load_dotenv(dotenv_path=dotenv_path)
 
 # ====== Summary Builders ======
 def build_pool_state_summary(pools: List[PoolAgent]) -> str:
@@ -51,19 +53,60 @@ def generate_powerlaw_stakes(
     stakes = stakes / stakes.sum() * total_funds
     return stakes.tolist()
 
+def process_user_choices(
+    users: List[UserAgent],
+    pool_state_summary: str,
+    user_delegation_summary: str,
+    saturation_size: float,
+    round_idx: int,
+):
+    """同步处理用户选择"""
+    for user in users:
+        user.choose_pools(
+            pool_state_summary,
+            user_delegation_summary,
+            saturation_size,
+            round_idx
+        )
+
 # ====== Simulation Runner ======
-def run_simulation(num_rounds=10, num_users=100, num_pools=10):
-    llm = ChatOpenAI(model_name="gpt-4o-2024-08-06", temperature=0.5) # may need to change the temperature
+def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
+    llm = ChatGroq(model="llama3-8b-8192", temperature=0.0)
 
     saturation_size = S_OPT
     total_funds = saturation_size * num_pools
     stakes = generate_powerlaw_stakes(num_users=num_users, total_funds=total_funds)
 
+    # Define user personas and their distribution weights
+    user_persona_distribution = {
+        "Decentralization Maximalist": 0.20,
+        "Mission-Driven Delegator": 0.15,
+        "Passive Yield-Seeker": 0.35,
+        "Active Yield-Farmer": 0.05,
+        "Brand Loyalist": 0.15,
+        "Risk-Averse Institutional": 0.10,
+    }
+    user_personas = random.choices(
+        list(user_persona_distribution.keys()),
+        weights=list(user_persona_distribution.values()),
+        k=num_users
+    )
     users: List[UserAgent] = [
-        UserAgent(user_id=i + 1, stake=stake, llm=llm)
+        UserAgent(user_id=i + 1, stake=stake, llm=llm, persona=user_personas[i])
         for i, stake in enumerate(stakes)
     ]
 
+    # Define pool personas and their distribution
+    pool_persona_distribution = {
+        "Community Builder": 0.4,
+        "Profit Maximizer": 0.3,
+        "Corporate Pool": 0.3,
+    }
+    pool_personas = random.choices(
+        list(pool_persona_distribution.keys()),
+        weights=list(pool_persona_distribution.values()),
+        k=num_pools
+    )
     pools: List[PoolAgent] = [
         PoolAgent(
             pool_id=i + 1,
@@ -71,6 +114,7 @@ def run_simulation(num_rounds=10, num_users=100, num_pools=10):
             margin=random.uniform(0.01, 0.05),
             cost=random.uniform(500, 2000),
             llm=llm,
+            persona=pool_personas[i]
         )
         for i in range(num_pools)
     ]
@@ -79,13 +123,19 @@ def run_simulation(num_rounds=10, num_users=100, num_pools=10):
     log_lines = []
 
     for round_idx in range(num_rounds):
-        print("Running simulation round", round_idx + 1, "/", num_rounds)
+        print(f"Running simulation round {round_idx + 1} / {num_rounds}")
         log_lines.append(f"\n=== Simulation Round {round_idx + 1} ===")
         pool_state_summary = build_pool_state_summary(pools)
         user_delegation_summary = build_user_delegation_summary(users, pools)
 
-        for user in users:
-            user.choose_pools(pool_state_summary, user_delegation_summary, saturation_size)
+        # 并发处理用户选择
+        process_user_choices(
+            users,
+            pool_state_summary,
+            user_delegation_summary,
+            saturation_size,
+            round_idx
+        )
 
         pool_delegations: Dict[int, List[float]] = {p.pool_id: [] for p in pools}
         for user in users:
@@ -105,7 +155,7 @@ def run_simulation(num_rounds=10, num_users=100, num_pools=10):
             user.reward_history.append(reward)
 
         for pool in pools:
-            pool.update_parameters()
+            pool.update_parameters(round_idx)
             profit = (
                 pool.reward * pool.margin
                 + (pool.reward - pool.cost) * (1 - pool.margin)
@@ -147,6 +197,7 @@ def run_simulation(num_rounds=10, num_users=100, num_pools=10):
                 "users": [
                     {
                         "user_id": u.user_id,
+                        "stake": u.stake,
                         "allocations": [
                             {"pool_id": a.pool_id, "stake_amount": a.stake_amount}
                             for a in u.stake_allocation
@@ -159,16 +210,26 @@ def run_simulation(num_rounds=10, num_users=100, num_pools=10):
         )
 
     # ====== Write results to file ======
-    os.makedirs("results", exist_ok=True)
+    # Create a unique timestamped directory for this simulation run
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    base_path = f"results/{timestamp}"
+    output_dir = os.path.join("results", timestamp)
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Define file paths
+    log_filepath = os.path.join(output_dir, "simulation_log.txt")
+    json_filepath = os.path.join(output_dir, "simulation_results.json")
 
     # Write text log
-    with open(f"{base_path}.txt", "w", encoding="utf-8") as f_txt:
+    with open(log_filepath, "w", encoding="utf-8") as f_txt:
         f_txt.write("\n".join(log_lines))
 
     # Write structured data as JSON
-    with open(f"{base_path}.json", "w", encoding="utf-8") as f_json:
+    with open(json_filepath, "w", encoding="utf-8") as f_json:
         json.dump(history, f_json, indent=2)
-    print("Simulation completed successfully.")
+        
+    print(f"Simulation completed successfully. Results saved in {output_dir}")
     return history
+
+def run_simulation(num_rounds=10, num_users=100, num_pools=10):
+    """同步版本的包装器，调用同步版本"""
+    return run_simulation_sync(num_rounds, num_users, num_pools)

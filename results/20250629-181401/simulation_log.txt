@@ -1,0 +1,30 @@
+
+=== Simulation Round 1 ===
+Pool States:
+Pool 1: pledge=357394.5, margin=0.015, cost=1600.0, stake_delegated=4245777.6, reward=896137.6, profit=892961.6
+Pool 2: pledge=400000.0, margin=0.012, cost=1400.0, stake_delegated=5636159.6, reward=980023.9, profit=977240.7
+Pool 3: pledge=350000.0, margin=0.035, cost=650.0, stake_delegated=3897312.4, reward=825854.0, profit=824576.8
+Pool 4: pledge=550000.0, margin=0.015, cost=1600.0, stake_delegated=3342972.3, reward=737781.7, profit=734605.7
+Pool 5: pledge=700000.0, margin=0.040, cost=1000.0, stake_delegated=2780839.6, reward=647026.8, profit=645066.8
+
+User Delegations and Rewards:
+User 1: Pool 1: 0, Pool 2: 1364349, Pool 3: 0, Pool 4: 0, Pool 5: 0, reward 220012.6
+User 2: Pool 1: 2000000, Pool 2: 2000000, Pool 3: 2000000, Pool 4: 2000000, Pool 5: 2000000, reward 2229895.1
+User 3: Pool 1: 1061351, Pool 2: 1061351, Pool 3: 1061351, Pool 4: 0, Pool 5: 0, reward 574566.1
+User 4: Pool 1: 500000, Pool 2: 500000, Pool 3: 500000, Pool 4: 500000, Pool 5: 125233, reward 387407.1
+User 5: Pool 1: 337032, Pool 2: 337032, Pool 3: 0, Pool 4: 337032, Pool 5: 0, reward 181882.3
+
+=== Simulation Round 2 ===
+Pool States:
+Pool 1: pledge=357394.5, margin=0.015, cost=1600.0, stake_delegated=4245777.6, reward=897590.8, profit=894414.8
+Pool 2: pledge=400000.0, margin=0.012, cost=1400.0, stake_delegated=5636159.6, reward=978719.8, profit=975936.6
+Pool 3: pledge=350000.0, margin=0.035, cost=650.0, stake_delegated=3897312.4, reward=827812.5, profit=826535.2
+Pool 4: pledge=550000.0, margin=0.015, cost=1600.0, stake_delegated=3342972.3, reward=743994.5, profit=740818.5
+Pool 5: pledge=700000.0, margin=0.040, cost=1000.0, stake_delegated=2780839.6, reward=653167.9, profit=651207.9
+
+User Delegations and Rewards:
+User 1: Pool 1: 0, Pool 2: 1364349, Pool 3: 0, Pool 4: 0, Pool 5: 0, reward 218564.8
+User 2: Pool 1: 2000000, Pool 2: 2000000, Pool 3: 2000000, Pool 4: 2000000, Pool 5: 2000000, reward 2220543.1
+User 3: Pool 1: 1061351, Pool 2: 1061351, Pool 3: 1061351, Pool 4: 0, Pool 5: 0, reward 573498.2
+User 4: Pool 1: 500000, Pool 2: 500000, Pool 3: 500000, Pool 4: 500000, Pool 5: 125233, reward 386856.0
+User 5: Pool 1: 337032, Pool 2: 337032, Pool 3: 0, Pool 4: 337032, Pool 5: 0, reward 182169.6
