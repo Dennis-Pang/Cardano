@@ -2,14 +2,25 @@ import json
 import random
 from langchain.schema import HumanMessage
 from pydantic import BaseModel, Field
+import hashlib
 
 class PoolAgentReturn(BaseModel):
     pledge: float = Field(..., description="The new pledge amount")
     margin: float = Field(..., description="The new margin amount (between 0 and 1)")
     cost: float = Field(..., description="The new cost amount")
 
+# 全局决策缓存
+_pool_decision_cache = {}
+
+# 导入配置
+try:
+    from constants import LLM_OPTIMIZATION
+    _max_cache_size = LLM_OPTIMIZATION.get("MAX_POOL_CACHE_SIZE", 50)
+except ImportError:
+    _max_cache_size = 50
+
 class PoolAgent:
-    def __init__(self, pool_id: int, pledge: float, margin: float, cost: float, llm, persona: str):
+    def __init__(self, pool_id: int, pledge: float, margin: float, cost: float, llm, persona: str, min_update_frequency: int = 4):
         self.pool_id = pool_id
         self.pledge = pledge
         self.margin = margin
@@ -19,15 +30,40 @@ class PoolAgent:
         self.stake_delegated = 0.0
         self.reward = 0.0
         self.profit_history = []
-        self.update_frequency = self._get_update_frequency()
+        # 增加最小更新频率，使更新更保守
+        base_frequency = self._get_update_frequency()
+        self.update_frequency = max(base_frequency, min_update_frequency)
+        self.last_update_round = -1
+        self.last_decision_hash = None
+        self.last_stake_delegated = 0.0
 
     def _get_update_frequency(self) -> int:
+        # 增加所有频率，使更新更保守
         frequencies = {
-            "Community Builder": 5,
-            "Profit Maximizer": 2,
-            "Corporate Pool": 8,
+            "Community Builder": 8,    # 从5增加到8
+            "Profit Maximizer": 4,     # 从2增加到4
+            "Corporate Pool": 12,      # 从8增加到12
         }
-        return frequencies.get(self.persona, 4)
+        return frequencies.get(self.persona, 6) # 默认从4增加到6
+
+    def _get_decision_hash(self) -> str:
+        """生成决策上下文的哈希值"""
+        context = f"{self.persona}:{self.stake_delegated:.0f}:{self.reward:.0f}:{len(self.profit_history)}"
+        return hashlib.md5(context.encode()).hexdigest()
+
+    def _should_update(self, current_round: int) -> bool:
+        """决定是否需要更新参数"""
+        # 检查更新频率
+        if current_round - self.last_update_round < self.update_frequency:
+            return False
+            
+        # 检查stake变化是否显著
+        stake_change_ratio = abs(self.stake_delegated - self.last_stake_delegated) / max(self.last_stake_delegated, 1)
+        threshold = LLM_OPTIMIZATION.get("STAKE_CHANGE_THRESHOLD", 0.1)
+        if stake_change_ratio < threshold:
+            return False
+            
+        return True
 
     def _get_persona_prompt(self) -> str:
         prompts = {
@@ -60,8 +96,23 @@ class PoolAgent:
         return user_stake * self.reward * (1 - self.margin) / s
 
     def update_parameters(self, current_round: int):
-        if current_round % self.update_frequency != 0:
+        if not self._should_update(current_round):
             return # Skip updating strategy this round
+
+        # 检查缓存
+        decision_hash = self._get_decision_hash()
+        if decision_hash in _pool_decision_cache:
+            cached_decision = _pool_decision_cache[decision_hash]
+            self.pledge = cached_decision['pledge']
+            self.margin = cached_decision['margin'] 
+            self.cost = cached_decision['cost']
+            self.last_update_round = current_round
+            self.last_decision_hash = decision_hash
+            self.last_stake_delegated = self.stake_delegated
+            # 记录缓存命中
+            from simulation import llm_call_stats
+            llm_call_stats["cache_hits"] += 1
+            return
 
         prompt = (
             f"You are the operator of pool {self.pool_id}.\n"
@@ -77,4 +128,19 @@ class PoolAgent:
         self.pledge = max(0, pledge)
         self.margin = min(max(0, margin), 1)
         self.cost = max(0, cost)
+        
+        # 更新缓存
+        if len(_pool_decision_cache) >= _max_cache_size:
+            # 移除最老的缓存项
+            oldest_key = next(iter(_pool_decision_cache))
+            del _pool_decision_cache[oldest_key]
+        _pool_decision_cache[decision_hash] = {
+            'pledge': self.pledge,
+            'margin': self.margin,
+            'cost': self.cost
+        }
+        
+        self.last_update_round = current_round
+        self.last_decision_hash = decision_hash
+        self.last_stake_delegated = self.stake_delegated
 

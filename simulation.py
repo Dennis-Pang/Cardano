@@ -8,8 +8,15 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from user_agents import UserAgent
 from pool_agents import PoolAgent
-from constants import TOTAL_REWARDS, S_OPT, A0
+from constants import TOTAL_REWARDS, S_OPT, A0, LLM_OPTIMIZATION
 
+# 全局LLM调用统计
+llm_call_stats = {
+    "user_calls": 0,
+    "pool_calls": 0,
+    "cache_hits": 0,
+    "total_rounds": 0
+}
 
 # Load environment variables
 # Explicitly load the .env file from the script's directory to ensure it's found.
@@ -53,24 +60,87 @@ def generate_powerlaw_stakes(
     stakes = stakes / stakes.sum() * total_funds
     return stakes.tolist()
 
-def process_user_choices(
+def process_user_choices_batch(
     users: List[UserAgent],
     pool_state_summary: str,
     user_delegation_summary: str,
     saturation_size: float,
     round_idx: int,
 ):
-    """同步处理用户选择"""
+    """批处理用户选择以减少LLM调用"""
+    global llm_call_stats
+    
+    if not LLM_OPTIMIZATION["ENABLE_BATCH_PROCESSING"]:
+        # 原始逐个处理
+        for user in users:
+            user.choose_pools(
+                pool_state_summary,
+                user_delegation_summary,
+                saturation_size,
+                round_idx
+            )
+        return
+
+    # 批处理逻辑
+    batch_size = LLM_OPTIMIZATION["BATCH_SIZE"]
+    users_to_update = []
+    
+    # 先确定哪些用户需要更新
     for user in users:
-        user.choose_pools(
-            pool_state_summary,
-            user_delegation_summary,
-            saturation_size,
-            round_idx
-        )
+        if user._should_update(round_idx, pool_state_summary, user_delegation_summary):
+            users_to_update.append(user)
+    
+    print(f"Round {round_idx + 1}: {len(users_to_update)} users need updates out of {len(users)}")
+    llm_call_stats["user_calls"] += len(users_to_update)
+    
+    # 分批处理需要更新的用户
+    for i in range(0, len(users_to_update), batch_size):
+        batch = users_to_update[i:i + batch_size]
+        for user in batch:
+            user.choose_pools(
+                pool_state_summary,
+                user_delegation_summary,
+                saturation_size,
+                round_idx
+            )
+        
+        # 在批次之间添加小延迟以避免rate limit
+        if i + batch_size < len(users_to_update):
+            time.sleep(0.1)
+
+def process_pool_updates_batch(pools: List[PoolAgent], round_idx: int):
+    """批处理池参数更新"""
+    global llm_call_stats
+    
+    pools_to_update = []
+    for pool in pools:
+        if pool._should_update(round_idx):
+            pools_to_update.append(pool)
+    
+    print(f"Round {round_idx + 1}: {len(pools_to_update)} pools need updates out of {len(pools)}")
+    llm_call_stats["pool_calls"] += len(pools_to_update)
+    
+    if not LLM_OPTIMIZATION["ENABLE_BATCH_PROCESSING"]:
+        for pool in pools_to_update:
+            pool.update_parameters(round_idx)
+        return
+    
+    # 分批处理
+    batch_size = LLM_OPTIMIZATION["BATCH_SIZE"]
+    for i in range(0, len(pools_to_update), batch_size):
+        batch = pools_to_update[i:i + batch_size]
+        for pool in batch:
+            pool.update_parameters(round_idx)
+        
+        # 在批次之间添加小延迟
+        if i + batch_size < len(pools_to_update):
+            time.sleep(0.1)
 
 # ====== Simulation Runner ======
 def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
+    global llm_call_stats
+    llm_call_stats["total_rounds"] = num_rounds
+    
     llm = ChatGroq(model="llama3-8b-8192", temperature=0.0)
 
     saturation_size = S_OPT
@@ -92,7 +162,13 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
         k=num_users
     )
     users: List[UserAgent] = [
-        UserAgent(user_id=i + 1, stake=stake, llm=llm, persona=user_personas[i])
+        UserAgent(
+            user_id=i + 1, 
+            stake=stake, 
+            llm=llm, 
+            persona=user_personas[i],
+            min_update_frequency=LLM_OPTIMIZATION["MIN_USER_UPDATE_FREQUENCY"]
+        )
         for i, stake in enumerate(stakes)
     ]
 
@@ -114,7 +190,8 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
             margin=random.uniform(0.01, 0.05),
             cost=random.uniform(500, 2000),
             llm=llm,
-            persona=pool_personas[i]
+            persona=pool_personas[i],
+            min_update_frequency=LLM_OPTIMIZATION["MIN_POOL_UPDATE_FREQUENCY"]
         )
         for i in range(num_pools)
     ]
@@ -128,8 +205,8 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
         pool_state_summary = build_pool_state_summary(pools)
         user_delegation_summary = build_user_delegation_summary(users, pools)
 
-        # 并发处理用户选择
-        process_user_choices(
+        # 批处理用户选择
+        process_user_choices_batch(
             users,
             pool_state_summary,
             user_delegation_summary,
@@ -154,8 +231,10 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
             )
             user.reward_history.append(reward)
 
+        # 批处理池参数更新
+        process_pool_updates_batch(pools, round_idx)
+        
         for pool in pools:
-            pool.update_parameters(round_idx)
             profit = (
                 pool.reward * pool.margin
                 + (pool.reward - pool.cost) * (1 - pool.margin)
@@ -209,6 +288,9 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
             }
         )
 
+    # 打印LLM调用统计
+    print_llm_stats()
+
     # ====== Write results to file ======
     # Create a unique timestamped directory for this simulation run
     timestamp = time.strftime("%Y%m%d-%H%M%S")
@@ -218,6 +300,7 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
     # Define file paths
     log_filepath = os.path.join(output_dir, "simulation_log.txt")
     json_filepath = os.path.join(output_dir, "simulation_results.json")
+    stats_filepath = os.path.join(output_dir, "llm_stats.json")
 
     # Write text log
     with open(log_filepath, "w", encoding="utf-8") as f_txt:
@@ -226,9 +309,27 @@ def run_simulation_sync(num_rounds=10, num_users=100, num_pools=10):
     # Write structured data as JSON
     with open(json_filepath, "w", encoding="utf-8") as f_json:
         json.dump(history, f_json, indent=2)
+    
+    # Write LLM stats
+    with open(stats_filepath, "w", encoding="utf-8") as f_stats:
+        json.dump(llm_call_stats, f_stats, indent=2)
         
     print(f"Simulation completed successfully. Results saved in {output_dir}")
     return history
+
+def print_llm_stats():
+    """打印LLM调用统计信息"""
+    global llm_call_stats
+    total_calls = llm_call_stats["user_calls"] + llm_call_stats["pool_calls"]
+    avg_calls_per_round = total_calls / max(llm_call_stats["total_rounds"], 1)
+    
+    print(f"\n=== LLM调用统计 ===")
+    print(f"总用户调用: {llm_call_stats['user_calls']}")
+    print(f"总池调用: {llm_call_stats['pool_calls']}")
+    print(f"总调用数: {total_calls}")
+    print(f"缓存命中: {llm_call_stats['cache_hits']}")
+    print(f"平均每轮调用: {avg_calls_per_round:.2f}")
+    print(f"总轮数: {llm_call_stats['total_rounds']}")
 
 def run_simulation(num_rounds=10, num_users=100, num_pools=10):
     """同步版本的包装器，调用同步版本"""
