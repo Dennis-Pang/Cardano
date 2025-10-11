@@ -1,13 +1,12 @@
 # Cardano Stake Pool Simulation
 
-This project simulates a multi-round market where Cardano delegators and stake-pool operators evolve strategies with the help of a locally hosted LLM served from Ollama. Each agent reasons about noisy recent performance, produces structured text outputs, and follows built-in behavioural guardrails (limited memory, switching friction, conservative fee adjustments). The repository includes data logging utilities and analysis helpers for inspecting the simulation trails.
+This project simulates a multi-round Cardano staking market where every participant is modelled as a single **Stakeholder**. Stakeholders may operate a pool, delegate to others, or do both. The engine implements the Shelley Reward Sharing Scheme (RSS), incorporates switching friction, applies pledge incentives, and tracks market concentration metrics (HHI, Nakamoto coefficient) each epoch. Results are streamed to disk so runs remain analyzable even if interrupted.
 
 ---
 
 ## 🚀 Quick Reference
 
 - **Python version:** 3.13 (see `.venv/`)
-- **LLM backend:** Local Ollama model (`OLLAMA_MODEL` env var, default `llama3`)
 - **Entry point:** `python main.py`
 - **Outputs:** Timestamped folders under `results/`
 
@@ -23,56 +22,20 @@ This project simulates a multi-round market where Cardano delegators and stake-p
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. **Start Ollama** (if not already running):
-   ```bash
-   ollama serve
-   ```
-4. **Pull the model** you plan to use (defaults to `llama3`). For other choices set `OLLAMA_MODEL` in your shell or `.env`:
-   ```bash
-   ollama pull llama3
-   export OLLAMA_MODEL=llama3
-   ```
-5. **Populate `.env`** (optional). The simulation loads `.env` automatically, so set extra knobs here (e.g., `OLLAMA_MODEL`, custom run identifiers).
+3. **Optional configuration**  
+   Create a `.env` file to override defaults (e.g., `CARDANO_MIGRATION_RATE`, `CARDANO_SHOCK_INTERVAL`, `CARDANO_REWARD_NOISE_STD`).
 
 ---
 
-## 🧠 Agent Workflow Overview
+## 🧠 Round Structure
 
-The simulation coordinates users (delegators) and pool operators across repeated rounds. At each round:
+Each epoch executes the following sequence:
 
-1. **Summaries Compile**
-   - Pool and user states are aggregated into natural language summaries (stake, rewards, margins, etc.).
-
-2. **Delegator Decisions** (`user_agents.py`)
-   - Every cohort receives a system prompt describing its persona, limited to a rolling history window and explicit switching friction.
-   - The user prompt provides current pool metrics, the last few rounds of earnings, and a brief record of prior allocations.
-   - The Ollama model replies with:
-     ```
-     THOUGHT: ...reasoning...
-     SELECTIONS: POOL1::value, POOL2::value
-     ```
-   - A regex parser extracts `POOLn::amount` pairs and stores them as JSON for downstream accounting. Most rounds only a small share of cohorts rebalance, matching the configured migration rate.
-
-3. **Pool Operator Updates** (`pool_agents.py`)
-   - Similar structure, but the system prompt enforces ≤5% parameter tweaks and acknowledges noisy telemetry.
-   - LLM-managed pools respond with:
-     ```
-     THOUGHT: ...analysis...
-     PARAMS: PLEDGE::value, MARGIN::value, COST::value
-     ```
-   - Parsed values adjust the pool’s configuration for the next epoch (clamped to the small-step policy); invalid responses fall back to the previous settings.
-
-4. **Reward & Profit Calculation** (`simulation.py`)
-   - Delegated stake totals feed into Cardano-inspired reward formulas using `TOTAL_REWARDS`, `S_OPT`, and `A0`, then a light 1% Gaussian noise is injected to mimic real-world volatility.
-   - User rewards and pool profits are recorded; agents append round outcomes to their limited histories.
-
-5. **Structural Events**
-   - Every configurable interval (default 50 rounds) a “shock” nudges fees upward and trims rewards, forcing strategies to re-evaluate.
-
-6. **Persistence**
-   - Each run streams logs to `results/<timestamp>/simulation_log.txt` and continuously refreshes `simulation_results.json`, so partial progress survives interruptions.
-     - `simulation_log.txt` – human-readable round-by-round trace (thoughts, decisions, rewards).
-     - `simulation_results.json` – structured data for external analysis pipelines.
+1. **Stake aggregation** – Stakeholders contribute pledge (if they operate a pool) and current delegations to build the pool stake table.
+2. **Reward computation** – The Shelley Reward Sharing Scheme is evaluated using the configured `TOTAL_REWARDS`, `k = 1/ S_OPT`, and `a₀`. A light Gaussian noise term is applied to mimic network variability.
+3. **Payout distribution** – Fixed costs and margins are deducted, the operator receives pledge-linked rewards, and delegators split the remaining pot proportionally.
+4. **Behavioural updates** – A small migration cohort (default 5%) re-evaluates pools based on the latest net ROI. The rest remain inert, preserving realistic friction. Optional structural shocks (default every 50 rounds) tweak fees and costs.
+5. **Metrics & persistence** – Logs are streamed to disk, concentration metrics (HHI, Nakamoto coefficient) are recorded, and a snapshot of pools/stakeholders is appended to `simulation_results.json`.
 
 ---
 
@@ -84,11 +47,11 @@ The simulation coordinates users (delegators) and pool operators across repeated
    ```
 2. Launch the run with desired scale:
    ```bash
-   python main.py --rounds 100 --users 30 --pools 80
+   python main.py --rounds 100 --users 300 --pools 100
    ```
    - `--rounds` – number of epochs (50–300 recommended)
-   - `--users` – delegator cohorts (treat as grouped users, default 30)
-   - `--pools` – stake pools (only a subset may use LLM-driven strategies)
+  - `--users` – total stakeholders (operators + delegators)
+   - `--pools` – number of pools (each backed by a stakeholder operator)
 3. Inspect the generated `results/<timestamp>/` directory for the logs and JSON payload.
 4. Optional: craft custom scripts to post-process the JSON or visualise trends.
 
@@ -96,18 +59,16 @@ The simulation coordinates users (delegators) and pool operators across repeated
 
 ## 🔧 Customisation Tips
 
-- **Model Choice:** Set `OLLAMA_MODEL` (env or `.env`) to switch to another local model.
-- **Persona Prompts:** Adjust persona text and message templates inside `prompts.py`; tweak update frequencies or migration probabilities in `user_agents.py` / `pool_agents.py` if your cohorts need different inertia levels.
-- **Economics:** Modify constants in `constants.py` to explore alternative network reward parameters.
-- **Environment Knobs:** Override defaults via env vars (e.g., `CARDANO_USER_HISTORY_WINDOW`, `CARDANO_REWARD_NOISE_STD`, `CARDANO_SHOCK_INTERVAL`) to explore different market frictions.
-- **Logging:** Extend `simulation.py` to capture extra telemetry (e.g., raw thoughts) if you need richer analytics.
+- **Economics:** Tune `TOTAL_REWARDS`, `S_OPT`, and `A0` in `constants.py` to explore different decentralisation targets.
+- **Behaviour knobs:** Override env vars such as `CARDANO_MIGRATION_RATE`, `CARDANO_IMPROVEMENT_THRESHOLD`, or `CARDANO_REWARD_NOISE_STD` to adjust cohort inertia and volatility.
+- **Shock modelling:** Use `CARDANO_SHOCK_INTERVAL` and `CARDANO_SHOCK_COST_DELTA` to script structural events.
+- **Data exports:** Extend `simulation.py` if you need additional metrics or alternative serialisation formats.
 
 ---
 
 ## ✅ Verification
 
 - Compile check: `python -m compileall Cardano`
-- LLM availability: `curl http://localhost:11434/api/tags` (ensures Ollama is serving models)
 
 ---
 
@@ -120,11 +81,10 @@ MIT License
 ## 🇨🇳 中文对照指南
 
 ### 项目概述
-本项目利用部署在本地的 Ollama 模型，模拟 Cardano 委托人和质押池运营者在多轮市场中的策略演化。每位智能体只基于最近窗口的噪声数据进行分析，输出固定格式的文本，并遵循内置的行为约束（迁移摩擦、小步调参等）。
+本项目将所有参与者统一建模为 Stakeholder，涵盖开池者与普通委托人。在每个结算周期中，系统依据 Shelley Reward Sharing Scheme 计算奖励、考虑 pledge 激励与超饱和惩罚，并输出 HHI、Nakamoto 系数等集中度指标。
 
 ### 快速参考
 - Python 版本：3.13（位于 `.venv/` 虚拟环境）
-- 模型后端：本地 Ollama（通过环境变量 `OLLAMA_MODEL` 指定，默认 `llama3`）
 - 入口脚本：`python main.py`
 - 输出目录：`results/` 下的时间戳子目录
 
@@ -137,35 +97,30 @@ MIT License
    pip install --upgrade pip
    pip install -r requirements.txt
    ```
-3. 启动 Ollama 服务：`ollama serve`
-4. 拉取所需模型并设置环境变量（如 `OLLAMA_MODEL=llama3`）。
-5. 可在 `.env` 中配置额外参数，程序会自动加载。
+3. （可选）在 `.env` 中写入参数，例如 `CARDANO_MIGRATION_RATE`、`CARDANO_SHOCK_INTERVAL`。
 
-### 智能体工作流
-1. 生成当前轮次的池子和用户摘要。
-2. 委托人根据系统提示、人设和历史记录，输出 `THOUGHT` 与 `SELECTIONS`，程序用正则解析 `POOLn::数值`。
-3. 质押池运营者输出 `THOUGHT` 与 `PARAMS`，解析出新的 pledge、margin、cost。
-4. `simulation.py` 按 Cardano 奖励公式计算收益与利润，并写入历史。
-5. 每隔固定轮次触发结构性冲击（默认 50 轮），例如手续费上调或收益下调，促使策略重新评估。
-6. 生成日志与 JSON 数据，保存在 `results/<timestamp>/`。
+### 轮次流程
+1. 汇总质押：池运营者投入 pledge，所有 Stakeholder 的委托写入当前池的总质押。
+2. 计算奖励：调用 Shelley RSS 公式，并加入轻度噪声模拟网络波动。
+3. 发放收益：扣除固定成本和 margin，运营者获得 pledge 奖励，其余按份额分配给委托人。
+4. 行为更新：仅约 5% 委托人重新评估池子，其余保持原状；可配置的结构性冲击每隔若干轮触发。
+5. 指标输出：记录 HHI、Nakamoto 等集中度指标，并实时写入日志与 JSON。
 
 ### 运行仿真
 ```bash
 source .venv/bin/activate
-python main.py --rounds 100 --users 30 --pools 80
+python main.py --rounds 100 --users 300 --pools 100
 ```
-参数含义：`--rounds` 为轮次数（建议 50–300），`--users` 表示委托人群组数量，`--pools` 为质押池数量。运行过程中日志会实时写入磁盘，可在中断后继续分析。
+参数含义：`--rounds` 为轮次数（建议 50–300），`--users` 表示 Stakeholder 总数（包含运营者），`--pools` 为质押池数量。运行过程中日志会实时写入磁盘，可在中断后继续分析。
 
 ### 自定义建议
-- 修改 `OLLAMA_MODEL` 以切换本地模型。
-- 提示文案集中在 `prompts.py`，可根据需求修改；若想调整不同人群的惯性或更新频率，可在 `user_agents.py`、`pool_agents.py` 中修改相关参数。
-- 在 `constants.py` 中修改经济参数，例如 `TOTAL_REWARDS`、`S_OPT`、`A0`。
-- 可通过环境变量（如 `CARDANO_USER_HISTORY_WINDOW`、`CARDANO_REWARD_NOISE_STD`、`CARDANO_SHOCK_INTERVAL`）调节记忆窗口、噪声和冲击频率。
-- 如需更多日志，可扩展 `simulation.py`。
+- **经济参数**：在 `constants.py` 中调整 `TOTAL_REWARDS`、`S_OPT`、`A0`。
+- **行为参数**：通过环境变量（如 `CARDANO_MIGRATION_RATE`、`CARDANO_IMPROVEMENT_THRESHOLD`、`CARDANO_REWARD_NOISE_STD`）修改迁移率、收益噪声。
+- **冲击设置**：`CARDANO_SHOCK_INTERVAL`、`CARDANO_SHOCK_COST_DELTA` 用于控制结构性冲击。
+- **扩展输出**：可按需修改 `simulation.py` 增加额外指标或数据导出。
 
 ### 验证步骤
 - 语法检查：`python -m compileall Cardano`
-- 确认模型服务：`curl http://localhost:11434/api/tags`
 
 ### 许可证
 MIT 许可协议

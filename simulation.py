@@ -2,26 +2,24 @@ import json
 import os
 import random
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from dotenv import load_dotenv
 
 from constants import A0, S_OPT, TOTAL_REWARDS
-from ollama_client import OllamaLLM
-from pool_agents import PoolAgent
-from user_agents import UserAgent
+from stakeholders import Pool, Stakeholder
 
 
-# Load environment variables
-# Explicitly load the .env file from the script's directory to ensure it's found.
-dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+dotenv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 load_dotenv(dotenv_path=dotenv_path)
 
 USER_HISTORY_WINDOW = int(os.environ.get("CARDANO_USER_HISTORY_WINDOW", "5"))
 POOL_HISTORY_WINDOW = int(os.environ.get("CARDANO_POOL_HISTORY_WINDOW", "5"))
 POOL_ADJUSTMENT_CAP = float(os.environ.get("CARDANO_POOL_ADJUSTMENT_CAP", "0.05"))
 REWARD_NOISE_STD = float(os.environ.get("CARDANO_REWARD_NOISE_STD", "0.01"))
+MIGRATION_RATE = float(os.environ.get("CARDANO_MIGRATION_RATE", "0.05"))
+IMPROVEMENT_THRESHOLD = float(os.environ.get("CARDANO_IMPROVEMENT_THRESHOLD", "0.02"))
 SHOCK_INTERVAL = int(os.environ.get("CARDANO_SHOCK_INTERVAL", "50"))
 SHOCK_COST_DELTA = float(os.environ.get("CARDANO_SHOCK_COST_DELTA", "0.002"))
 HEAD_SHARE_RANGE: Tuple[float, float] = (
@@ -30,293 +28,275 @@ HEAD_SHARE_RANGE: Tuple[float, float] = (
 )
 
 
-def seed_pool_delegations(pools: List[PoolAgent], total_funds: float) -> None:
-    if not pools:
-        return
-    head_count = max(1, len(pools) // 10)
-    head_share = random.uniform(*HEAD_SHARE_RANGE)
-    tail_share = max(0.0, 1.0 - head_share)
-
-    sorted_pools = sorted(pools, key=lambda p: p.pledge, reverse=True)
-    head = sorted_pools[:head_count]
-    tail = sorted_pools[head_count:]
-
-    head_weights = np.random.dirichlet(np.ones(len(head))) if head else np.array([])
-    tail_weights = np.random.dirichlet(np.ones(len(tail))) if tail else np.array([])
-
-    for idx, pool in enumerate(head):
-        base = head_share * total_funds * head_weights[idx]
-        pool.base_delegation = base
-        pool.stake_delegated = base
-
-    for idx, pool in enumerate(tail):
-        base = tail_share * total_funds * (tail_weights[idx] if len(tail_weights) else 0.0)
-        pool.base_delegation = base
-        pool.stake_delegated = base
-
-    for pool in pools:
-        if not hasattr(pool, "base_delegation"):
-            pool.base_delegation = 0.0
-            pool.stake_delegated = 0.0
-
-
-def apply_structural_shock(pools: List[PoolAgent], round_idx: int, reward_multiplier: float) -> Tuple[float, str]:
-    if SHOCK_INTERVAL <= 0 or (round_idx + 1) % SHOCK_INTERVAL != 0:
-        return reward_multiplier, ""
-
-    for pool in pools:
-        pool.cost *= 1 + SHOCK_COST_DELTA
-        pool.margin = min(pool.margin + SHOCK_COST_DELTA, 0.15)
-    new_multiplier = reward_multiplier * (1 - SHOCK_COST_DELTA)
-    message = (
-        f"Structural shock: network congestion increases costs by {SHOCK_COST_DELTA*100:.2f}% "
-        f"and trims rewards. Reward multiplier now {new_multiplier:.3f}"
-    )
-    return new_multiplier, message
-
-# ====== Summary Builders ======
-def build_pool_state_summary(pools: List[PoolAgent]) -> str:
-    return "\n".join(
-        f"Pool {p.pool_id}: pledge={p.pledge:.1f}, margin={p.margin:.2f}, "
-        f"cost={p.cost:.1f}, total_stake={p.stake_delegated + p.pledge:.1f}, "
-        f"reward_prev_round={p.reward:.1f}"
-        for p in sorted(pools, key=lambda p: p.pool_id)
-    )
-
-def build_user_delegation_summary(users: List[UserAgent], pools: List[PoolAgent]) -> str:
-    lines = []
-    for user in users:
-        stake_map = {a.pool_id: a.stake_amount for a in user.stake_allocation}
-        line = ", ".join(
-            f"Pool {p.pool_id}: {stake_map.get(p.pool_id, 0):.0f}"
-            for p in sorted(pools, key=lambda p: p.pool_id)
-        )
-        lines.append(f"User {user.user_id}: {line}")
-    return "\n".join(lines)
-
-# ====== Stake Generator ======
 def generate_powerlaw_stakes(
-    num_users: int,
+    count: int,
     total_funds: float,
     alpha: float = 2.0,
-    min_stake: float = 500,
-    max_stake: float = None,
-    seed: int = 42
+    min_stake: float = 1_000.0,
+    seed: int = 42,
 ) -> List[float]:
     np.random.seed(seed)
-    samples = np.random.pareto(alpha, num_users) + 1
+    samples = np.random.pareto(alpha, count) + 1
     stakes = samples / samples.sum()
     stakes = stakes * total_funds
-    if max_stake is not None:
-        stakes = np.clip(stakes, min_stake, max_stake)
-    else:
-        stakes = np.maximum(stakes, min_stake)
+    stakes = np.maximum(stakes, min_stake)
     stakes = stakes / stakes.sum() * total_funds
     return stakes.tolist()
 
-def process_user_choices(
-    users: List[UserAgent],
-    pool_state_summary: str,
-    user_delegation_summary: str,
-    saturation_size: float,
-    round_idx: int,
-):
-    total_users = len(users)
-    log_interval = max(1, total_users // 10) if total_users else 1
-    round_label = round_idx + 1
-    for idx, user in enumerate(users):
-        user.choose_pools(
-            pool_state_summary,
-            user_delegation_summary,
-            saturation_size,
-            round_idx
-        )
-        if (idx + 1) % log_interval == 0 or (idx + 1) == total_users:
-            print(
-                f"[Round {round_label}] Delegator decisions {idx + 1}/{total_users}",
-                flush=True
-            )
 
-# ====== Simulation Runner ======
-def run_simulation_sync(num_rounds=100, num_users=30, num_pools=80):
-    model_name = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct")
-    llm = OllamaLLM(model=model_name, temperature=0.0)
+def create_stakeholders_and_pools(
+    num_stakeholders: int,
+    num_pools: int,
+    total_funds: float,
+) -> Tuple[List[Stakeholder], Dict[int, Pool]]:
+    if num_stakeholders < num_pools:
+        raise ValueError("Number of stakeholders must be at least the number of pools.")
+
+    stakes = generate_powerlaw_stakes(num_stakeholders, total_funds)
+    stakeholders = [Stakeholder(i + 1, stake) for i, stake in enumerate(stakes)]
+
+    pools: Dict[int, Pool] = {}
+    for idx in range(num_pools):
+        stakeholder = stakeholders[idx]
+        stakeholder.operates_pool = True
+        stakeholder.pool_id = idx + 1
+        pledge_fraction = random.uniform(0.1, 0.4)
+        stakeholder.pledge = min(stakeholder.total_stake, stakeholder.total_stake * pledge_fraction)
+        stakeholder.assign_delegation(stakeholder.pool_id)
+        pools[stakeholder.pool_id] = Pool(
+            pool_id=stakeholder.pool_id,
+            operator=stakeholder,
+            margin=random.uniform(0.02, 0.05),
+            cost=random.uniform(600, 1_500),
+            adjustment_cap=POOL_ADJUSTMENT_CAP,
+        )
+
+    delegators = stakeholders[num_pools:]
+    assign_initial_delegations(delegators, pools)
+    return stakeholders, pools
+
+
+def assign_initial_delegations(delegators: List[Stakeholder], pools: Dict[int, Pool]) -> None:
+    if not delegators or not pools:
+        return
+    pool_ids = sorted(pools.keys())
+    head_count = max(1, len(pool_ids) // 10)
+    head_ids = pool_ids[:head_count]
+    tail_ids = pool_ids[head_count:] or pool_ids
+    head_share = random.uniform(*HEAD_SHARE_RANGE)
+
+    for delegator in delegators:
+        choose_head = random.random() < head_share or not tail_ids
+        candidate_ids = head_ids if choose_head else tail_ids
+        delegator.assign_delegation(random.choice(candidate_ids))
+
+
+def rss_reward(total_rewards: float, sigma: float, pledge_ratio: float, z0: float, a0: float) -> float:
+    if sigma <= 0.0:
+        return 0.0
+    sigma_prime = min(sigma, z0)
+    pledge_prime = min(pledge_ratio, sigma_prime)
+    reward_factor = total_rewards / (1 + a0)
+    bonus = 0.0
+    if z0 > 0 and sigma_prime > 0:
+        bonus = pledge_prime * a0 * (sigma_prime - pledge_prime * (z0 - sigma_prime) / z0)
+    return max(reward_factor * (sigma_prime + max(bonus, 0.0)), 0.0)
+
+
+def apply_structural_shock(pools: Dict[int, Pool], round_idx: int) -> Optional[str]:
+    if SHOCK_INTERVAL <= 0 or (round_idx + 1) % SHOCK_INTERVAL != 0:
+        return None
+    for pool in pools.values():
+        pool.cost *= 1 + SHOCK_COST_DELTA
+        pool.margin = min(pool.margin + SHOCK_COST_DELTA, 0.15)
+    return (
+        f"Structural shock: network congestion increased costs and nudged fees upward by {SHOCK_COST_DELTA*100:.2f}%."
+    )
+
+
+def compute_concentration_metrics(pools: Dict[int, Pool], total_stake: float) -> Tuple[float, int]:
+    if total_stake <= 0:
+        return 0.0, 0
+    shares = sorted((pool.total_stake / total_stake for pool in pools.values()), reverse=True)
+    hhi = sum((share * 100) ** 2 for share in shares)
+    cumulative = 0.0
+    nakamoto = 0
+    for share in shares:
+        cumulative += share
+        nakamoto += 1
+        if cumulative >= 0.5:
+            break
+    return hhi, nakamoto
+
+
+def run_simulation_sync(num_rounds: int = 100, num_users: int = 300, num_pools: int = 100):
+    saturation_size = S_OPT
+    total_funds = saturation_size * num_pools
+
+    stakeholders, pools = create_stakeholders_and_pools(num_users, num_pools, total_funds)
+    stakeholder_lookup = {s.stakeholder_id: s for s in stakeholders}
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     output_dir = os.path.join("results", timestamp)
     os.makedirs(output_dir, exist_ok=True)
+    log_path = os.path.join(output_dir, "simulation_log.txt")
+    json_path = os.path.join(output_dir, "simulation_results.json")
 
-    log_filepath = os.path.join(output_dir, "simulation_log.txt")
-    json_filepath = os.path.join(output_dir, "simulation_results.json")
-
-    saturation_size = S_OPT
-    total_funds = saturation_size * num_pools
-    stakes = generate_powerlaw_stakes(num_users=num_users, total_funds=total_funds)
-
-    # Define user personas and their distribution weights
-    user_persona_distribution = {
-        "Decentralization Maximalist": 0.20,
-        "Mission-Driven Delegator": 0.15,
-        "Passive Yield-Seeker": 0.35,
-        "Active Yield-Farmer": 0.05,
-        "Brand Loyalist": 0.15,
-        "Risk-Averse Institutional": 0.10,
-    }
-    user_personas = random.choices(
-        list(user_persona_distribution.keys()),
-        weights=list(user_persona_distribution.values()),
-        k=num_users
-    )
-    users: List[UserAgent] = [
-        UserAgent(
-            user_id=i + 1,
-            stake=stake,
-            llm=llm,
-            persona=user_personas[i],
-            history_window=USER_HISTORY_WINDOW,
-        )
-        for i, stake in enumerate(stakes)
-    ]
-
-    # Define pool personas and their distribution
-    pool_persona_distribution = {
-        "Community Builder": 0.4,
-        "Profit Maximizer": 0.3,
-        "Corporate Pool": 0.3,
-    }
-    pool_personas = random.choices(
-        list(pool_persona_distribution.keys()),
-        weights=list(pool_persona_distribution.values()),
-        k=num_pools
-    )
-    pools: List[PoolAgent] = [
-        PoolAgent(
-            pool_id=i + 1,
-            pledge=random.uniform(100_000, 1_000_000),
-            margin=random.uniform(0.01, 0.05),
-            cost=random.uniform(500, 2000),
-            llm=llm,
-            persona=pool_personas[i],
-            history_window=POOL_HISTORY_WINDOW,
-            adjustment_cap=POOL_ADJUSTMENT_CAP,
-        )
-        for i in range(num_pools)
-    ]
-    seed_pool_delegations(pools, total_funds)
-
-    history = []
-    reward_multiplier = 1.0
-
-    with open(log_filepath, "w", encoding="utf-8") as log_file:
+    history: List[Dict] = []
+    with open(log_path, "w", encoding="utf-8") as log_file:
         for round_idx in range(num_rounds):
             print(f"Running simulation round {round_idx + 1} / {num_rounds}")
-            round_log = []
-            if round_idx > 0:
-                round_log.append("")
-            round_log.append(f"=== Simulation Round {round_idx + 1} ===")
-            reward_multiplier, shock_message = apply_structural_shock(pools, round_idx, reward_multiplier)
-            if shock_message:
-                round_log.append(shock_message)
+            round_lines: List[str] = []
+            if round_idx:
+                round_lines.append("")
+            round_lines.append(f"=== Simulation Round {round_idx + 1} ===")
+            shock_msg = apply_structural_shock(pools, round_idx)
+            if shock_msg:
+                round_lines.append(shock_msg)
 
-            pool_state_summary = build_pool_state_summary(pools)
-            user_delegation_summary = build_user_delegation_summary(users, pools)
+            for pool in pools.values():
+                pool.reset_round_state()
+                pool.total_stake += pool.operator.pledge
+                operator_extra = pool.operator.available_delegation()
+                if operator_extra > 0:
+                    pool.add_delegation(pool.operator, operator_extra)
+                    pool.total_stake += operator_extra
 
-            process_user_choices(
-                users,
-                pool_state_summary,
-                user_delegation_summary,
-                saturation_size,
-                round_idx
+            for stakeholder in stakeholders:
+                if stakeholder.operates_pool or stakeholder.delegated_pool_id is None:
+                    continue
+                amount = stakeholder.available_delegation()
+                if amount <= 0:
+                    continue
+                pool = pools[stakeholder.delegated_pool_id]
+                pool.add_delegation(stakeholder, amount)
+                pool.total_stake += amount
+
+            total_network_stake = sum(pool.total_stake for pool in pools.values())
+            z0 = 1.0 / num_pools if num_pools > 0 else 0.0
+
+            for pool in pools.values():
+                sigma = pool.total_stake / total_network_stake if total_network_stake > 0 else 0.0
+                pledge_ratio = pool.operator.pledge / total_network_stake if total_network_stake > 0 else 0.0
+                reward = rss_reward(TOTAL_REWARDS, sigma, pledge_ratio, z0, A0)
+                noise = random.gauss(0, REWARD_NOISE_STD)
+                pool.reward = max(reward * (1 + noise), 0.0)
+
+                if pool.reward <= pool.cost:
+                    pool.operator_reward = pool.reward
+                    pool.delegator_reward = 0.0
+                    pool.delegator_roi = 0.0
+                    pool.operator_roi = pool.operator_reward / pool.operator.total_stake
+                    pool.append_history_entry()
+                    continue
+
+                after_cost = pool.reward - pool.cost
+                margin_cut = after_cost * pool.margin
+                remainder = after_cost - margin_cut
+
+                delegator_stake = max(pool.total_stake - pool.operator.pledge, 0.0)
+                if delegator_stake > 0 and pool.total_stake > 0:
+                    pool.delegator_reward = remainder * (delegator_stake / pool.total_stake)
+                else:
+                    pool.delegator_reward = 0.0
+
+                variable_for_operator = remainder - pool.delegator_reward
+                pool.operator_reward = pool.cost + margin_cut + max(variable_for_operator, 0.0)
+
+                pool.delegator_roi = (
+                    pool.delegator_reward / delegator_stake if delegator_stake > 0 else 0.0
+                )
+                pool.operator_roi = (
+                    pool.operator_reward / pool.operator.total_stake if pool.operator.total_stake > 0 else 0.0
+                )
+                pool.append_history_entry()
+
+            for pool in pools.values():
+                delegator_total = sum(pool.delegators.values())
+                for stakeholder_id, amount in pool.delegators.items():
+                    payout = pool.delegator_reward * amount / delegator_total if delegator_total > 0 else 0.0
+                    stakeholder = stakeholder_lookup[stakeholder_id]
+                    if stakeholder.operates_pool and stakeholder.pool_id == pool.pool_id:
+                        payout += pool.operator_reward
+                    stakeholder.record_reward(payout)
+
+            for stakeholder in stakeholders:
+                if len(stakeholder.reward_history) < round_idx + 1:
+                    stakeholder.record_reward(0.0)
+
+            delegators = [s for s in stakeholders if not s.operates_pool and s.delegated_pool_id is not None]
+            migrations = max(1, int(len(delegators) * MIGRATION_RATE)) if delegators else 0
+            movers = random.sample(delegators, migrations) if migrations else []
+
+            for stakeholder in movers:
+                current_pool_id = stakeholder.delegated_pool_id
+                current_roi = pools[current_pool_id].delegator_roi
+                best_pool_id = current_pool_id
+                best_roi = current_roi
+                for pool_id, pool in pools.items():
+                    if pool.delegator_roi > best_roi * (1 + IMPROVEMENT_THRESHOLD):
+                        best_pool_id = pool_id
+                        best_roi = pool.delegator_roi
+                if best_pool_id != current_pool_id and best_roi > current_roi * (1 + IMPROVEMENT_THRESHOLD):
+                    stakeholder.assign_delegation(best_pool_id)
+
+            round_lines.append("Pools:")
+            for pool in sorted(pools.values(), key=lambda p: p.pool_id):
+                round_lines.append(
+                    f"Pool {pool.pool_id}: stake={pool.total_stake:,.0f}, reward={pool.reward:,.0f}, "
+                    f"delegator_roi={pool.delegator_roi:.4f}, margin={pool.margin:.3f}, cost={pool.cost:,.0f}"
+                )
+
+            round_lines.append("\nSample stakeholders:")
+            for stakeholder in stakeholders[:10]:
+                round_lines.append(
+                    f"Stakeholder {stakeholder.stakeholder_id}: pool={stakeholder.delegated_pool_id}, "
+                    f"last_reward={stakeholder.last_reward:,.2f}"
+                )
+
+            hhi, nakamoto = compute_concentration_metrics(pools, total_network_stake)
+
+            history.append(
+                {
+                    "round": round_idx + 1,
+                    "metrics": {"hhi": hhi, "nakamoto": nakamoto},
+                    "pools": [
+                        {
+                            "pool_id": pool.pool_id,
+                            "operator_id": pool.operator.stakeholder_id,
+                            "total_stake": pool.total_stake,
+                            "pledge": pool.operator.pledge,
+                            "margin": pool.margin,
+                            "cost": pool.cost,
+                            "reward": pool.reward,
+                            "delegator_roi": pool.delegator_roi,
+                            "operator_roi": pool.operator_roi,
+                        }
+                        for pool in sorted(pools.values(), key=lambda p: p.pool_id)
+                    ],
+                    "stakeholders": [
+                        {
+                            "stakeholder_id": stakeholder.stakeholder_id,
+                            "operates_pool": stakeholder.operates_pool,
+                            "pool_id": stakeholder.pool_id,
+                            "delegated_pool": stakeholder.delegated_pool_id,
+                            "total_stake": stakeholder.total_stake,
+                            "pledge": stakeholder.pledge,
+                            "last_reward": stakeholder.last_reward,
+                        }
+                        for stakeholder in stakeholders
+                    ],
+                }
             )
 
-            pool_delegations: Dict[int, List[float]] = {p.pool_id: [] for p in pools}
-            for user in users:
-                for alloc in user.stake_allocation:
-                    pool_delegations[alloc.pool_id].append(alloc.stake_amount)
-
-            for pool in pools:
-                user_total = sum(pool_delegations[pool.pool_id])
-                pool.stake_delegated = getattr(pool, "base_delegation", 0.0) + user_total
-                pool.compute_reward(TOTAL_REWARDS * reward_multiplier, S_OPT, A0)
-                noise = random.gauss(0, REWARD_NOISE_STD)
-                pool.reward = max(pool.reward * (1 + noise), 0.0)
-
-            pool_map = {p.pool_id: p for p in pools}
-            for user in users:
-                reward = sum(
-                    pool_map[alloc.pool_id].compute_user_reward(alloc.stake_amount)
-                    for alloc in user.stake_allocation
-                )
-                user.reward_history.append(reward)
-
-            total_pools = len(pools)
-            pool_log_interval = max(1, total_pools // 5) if total_pools else 1
-            for idx, pool in enumerate(pools):
-                pool.update_parameters(round_idx)
-                profit = (
-                    pool.reward * pool.margin
-                    + (pool.reward - pool.cost) * (1 - pool.margin)
-                    - pool.cost
-                )
-                pool.profit_history.append(profit)
-                if (idx + 1) % pool_log_interval == 0 or (idx + 1) == total_pools:
-                    print(
-                        f"[Round {round_idx + 1}] Pool updates {idx + 1}/{total_pools}",
-                        flush=True
-                    )
-
-            round_log.append("Pool States:")
-            for pool in pools:
-                round_log.append(
-                    f"Pool {pool.pool_id}: pledge={pool.pledge:.1f}, margin={pool.margin:.3f}, cost={pool.cost:.1f}, "
-                    f"stake_delegated={pool.stake_delegated:.1f}, reward={pool.reward:.1f}, profit={pool.profit_history[-1]:.1f}"
-                )
-
-            round_log.append("\nUser Delegations and Rewards:")
-            for user in users:
-                stake_map = {a.pool_id: a.stake_amount for a in user.stake_allocation}
-                deleg_str = ", ".join(
-                    f"Pool {pool.pool_id}: {stake_map.get(pool.pool_id, 0):.0f}"
-                    for pool in sorted(pools, key=lambda p: p.pool_id)
-                )
-                round_log.append(f"User {user.user_id}: {deleg_str}, reward {user.reward_history[-1]:.1f}")
-
-            round_record = {
-                "round": round_idx + 1,
-                "pools": [
-                    {
-                        "pool_id": p.pool_id,
-                        "pledge": p.pledge,
-                        "margin": p.margin,
-                        "cost": p.cost,
-                        "stake_delegated": p.stake_delegated,
-                        "reward": p.reward,
-                        "profit": p.profit_history[-1],
-                    }
-                    for p in pools
-                ],
-                "users": [
-                    {
-                        "user_id": u.user_id,
-                        "stake": u.stake,
-                        "allocations": [
-                            {"pool_id": a.pool_id, "stake_amount": a.stake_amount}
-                            for a in u.stake_allocation
-                        ],
-                        "reward": u.reward_history[-1],
-                    }
-                    for u in users
-                ]
-            }
-            history.append(round_record)
-
-            log_file.write("\n".join(round_log) + "\n")
+            log_file.write("\n".join(round_lines) + "\n")
             log_file.flush()
-            with open(json_filepath, "w", encoding="utf-8") as f_json:
-                json.dump(history, f_json, indent=2)
-        
+            with open(json_path, "w", encoding="utf-8") as json_file:
+                json.dump(history, json_file, indent=2)
+
     print(f"Simulation completed successfully. Results saved in {output_dir}")
     return history
 
-def run_simulation(num_rounds=100, num_users=30, num_pools=80):
+
+def run_simulation(num_rounds: int = 100, num_users: int = 300, num_pools: int = 100):
     return run_simulation_sync(num_rounds, num_users, num_pools)
