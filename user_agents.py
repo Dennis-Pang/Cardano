@@ -1,25 +1,30 @@
 import json
 import random
-from langchain.schema import HumanMessage
+import re
 from typing import List
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field
+from prompts import build_user_decision_prompt, build_user_system_prompt, get_user_persona_prompt
 
 class UserMultiPoolReturn(BaseModel):
     pool_id: int = Field(..., description="The pool id to delegate to")
     stake_amount: float = Field(..., description="The stake amount to delegate")
 
-class UserMultiPoolReturnList(BaseModel):
-    allocations: List[UserMultiPoolReturn]
 
 class UserAgent:
-    def __init__(self, user_id: int, stake: float, llm, persona: str):
+    def __init__(self, user_id: int, stake: float, llm, persona: str, history_window: int = 5):
         self.user_id = user_id
         self.stake = stake
         self.llm = llm
         self.persona = persona
         self.stake_allocation: List[UserMultiPoolReturn] = []
-        self.reward_history = []
+        self.reward_history: List[float] = []
         self.update_frequency = self._get_update_frequency()
+        self.allocation_history: List[List[dict]] = []
+        self.last_decision_json = "[]"
+        self.last_response_text = ""
+        self.last_thought = ""
+        self.history_window = history_window
+        self.migration_chance = random.uniform(0.01, 0.05)
 
     def _get_update_frequency(self) -> int:
         frequencies = {
@@ -32,17 +37,6 @@ class UserAgent:
         }
         return frequencies.get(self.persona, 5) # Default to 5
 
-    def _get_persona_prompt(self) -> str:
-        prompts = {
-            "Decentralization Maximalist": "Your primary goal is to strengthen the Cardano network. You prioritize delegating to single-pool operators to counter centralization. You prefer pools that are far from saturation. While you want fair returns, you will accept a slightly lower ROA to support a small, independent, high-quality operator.",
-            "Mission-Driven Delegator": "You are loyal to a cause. You delegate to pools that fund charities, environmental projects, or build tools for the ecosystem. Your choice is almost entirely based on the pool's mission, provided its performance isn't terrible. You rarely change your delegation.",
-            "Passive Yield-Seeker": "You want to earn rewards with minimal effort. You likely chose a pool from the top of a ranking list and will only change it if it becomes saturated or its fees increase dramatically. You prefer a 'set-it-and-forget-it' approach.",
-            "Active Yield-Farmer": "Your only goal is to maximize ROA. You constantly monitor pool performance, including luck factor and saturation, and will switch frequently to gain even a small edge. You are highly analytical and use all available data to make your decision.",
-            "Brand Loyalist": "You delegate to operators you know and trust from the community (e.g., developers, educators, content creators). Your decision is based on the operator's reputation and communication. You trust them to run a fair and performant pool and will stick with them unless their performance severely degrades.",
-            "Risk-Averse Institutional": "You prioritize secure, stable, and predictable returns. You strongly prefer large, established pools with a high pledge, a long track record of reliability, and low saturation. You will not delegate to new or unproven pools."
-        }
-        return prompts.get(self.persona, "You are a standard delegator trying to get a good return on your stake.")
-
     def choose_pools(
         self,
         pool_state_summary: str,
@@ -50,23 +44,91 @@ class UserAgent:
         saturation_size: float,
         current_round: int
     ):
-        if current_round % self.update_frequency != 0 and self.stake_allocation:
+        should_rebalance = (
+            current_round == 0
+            or (
+                current_round % self.update_frequency == 0
+                and random.random() < self.migration_chance
+            )
+        )
+        if not should_rebalance and self.stake_allocation:
+            self._store_allocation(current_round, self.stake_allocation)
             return # Skip updating strategy this round
 
-        prompt = (
-            f"You are a Cardano user with {self.stake:.1f} ADA to delegate.\n"
-            f"Your persona is: {self.persona}. {self._get_persona_prompt()}\n\n"
-            f"--- POOL PARAMETERS (current round) ---\n{pool_state_summary}\n\n"
-            f"--- USER DELEGATIONS (last round) ---\n{user_delegation_summary}\n\n"
-            f"Saturation size per pool is {saturation_size:.1f} ADA.\n\n"
-            "Rules:\n"
-            "- Pools get no additional reward after saturation.\n"
-            "- Margin reduces your share of the reward.\n"
-            "- Higher pledge increases pool's reward (via a0).\n"
-            "- You can split your stake across pools.\n\n"
-            "Return a list of allocations (pool_id and stake_amount) that best match your persona's goal."
+        persona_prompt = get_user_persona_prompt(self.persona)
+        migration_hint = f"{self.migration_chance*100:.1f}% of this cohort typically shifts per round"
+        system_prompt = build_user_system_prompt(
+            self.persona,
+            persona_prompt,
+            self.history_window,
+            migration_hint,
+        )
+        recent_history = self._build_recent_history()
+        prompt = build_user_decision_prompt(
+            stake=self.stake,
+            round_number=current_round + 1,
+            saturation_size=saturation_size,
+            pool_state_summary=pool_state_summary,
+            user_delegation_summary=user_delegation_summary,
+            recent_history=recent_history,
         )
 
-        structured_llm = self.llm.with_structured_output(UserMultiPoolReturnList)
-        resp = structured_llm.invoke([HumanMessage(content=prompt)])
-        self.stake_allocation = resp.allocations
+        response = self.llm.chat(prompt, system_prompt=system_prompt)
+        self.last_response_text = response
+        self.last_thought = self._extract_thought(response)
+        allocations = self._extract_allocations(response)
+
+        if not allocations and self.stake_allocation:
+            # Fallback to previous allocation if parsing failed
+            allocations = [
+                UserMultiPoolReturn(pool_id=alloc.pool_id, stake_amount=alloc.stake_amount)
+                for alloc in self.stake_allocation
+            ]
+
+        self.stake_allocation = allocations
+        self._store_allocation(current_round, allocations)
+
+    def _build_recent_history(self) -> str:
+        if not self.reward_history:
+            return "No completed rounds yet."
+        lines = []
+        for idx, (allocs, reward) in enumerate(zip(self.allocation_history, self.reward_history), start=1):
+            alloc_str = ", ".join(
+                f"POOL{entry['pool_id']}::{entry['stake_amount']:.1f}"
+                for entry in allocs
+            )
+            lines.append(f"Round {idx}: reward={reward:.2f}, allocations={alloc_str}")
+        return "\n".join(lines[-self.history_window:])
+
+    def _extract_allocations(self, text: str) -> List[UserMultiPoolReturn]:
+        pattern = re.compile(r"POOL\s*(\d+)\s*::\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
+        allocations_map = {}
+        for pool_id_str, amount_str in pattern.findall(text):
+            pool_id = int(pool_id_str)
+            amount = float(amount_str)
+            allocations_map[pool_id] = allocations_map.get(pool_id, 0.0) + amount
+
+        allocations = [
+            UserMultiPoolReturn(pool_id=pool_id, stake_amount=amount)
+            for pool_id, amount in allocations_map.items()
+        ]
+        return allocations
+
+    def _store_allocation(self, current_round: int, allocations: List[UserMultiPoolReturn]) -> None:
+        alloc_dicts = [
+            {"pool_id": alloc.pool_id, "stake_amount": alloc.stake_amount}
+            for alloc in allocations
+        ]
+        if current_round < len(self.allocation_history):
+            self.allocation_history[current_round] = alloc_dicts
+        else:
+            self.allocation_history.append(alloc_dicts)
+        self.last_decision_json = json.dumps(alloc_dicts)
+
+    def _extract_thought(self, text: str) -> str:
+        match = re.search(
+            r"THOUGHT\s*:\s*(.*?)\n\s*SELECTIONS",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        return match.group(1).strip() if match else ""

@@ -1,15 +1,20 @@
 import json
-import random
-from langchain.schema import HumanMessage
-from pydantic import BaseModel, Field
+import re
+from prompts import build_pool_decision_prompt, build_pool_system_prompt, get_pool_persona_prompt
 
-class PoolAgentReturn(BaseModel):
-    pledge: float = Field(..., description="The new pledge amount")
-    margin: float = Field(..., description="The new margin amount (between 0 and 1)")
-    cost: float = Field(..., description="The new cost amount")
 
 class PoolAgent:
-    def __init__(self, pool_id: int, pledge: float, margin: float, cost: float, llm, persona: str):
+    def __init__(
+        self,
+        pool_id: int,
+        pledge: float,
+        margin: float,
+        cost: float,
+        llm,
+        persona: str,
+        history_window: int = 5,
+        adjustment_cap: float = 0.05,
+    ):
         self.pool_id = pool_id
         self.pledge = pledge
         self.margin = margin
@@ -20,6 +25,14 @@ class PoolAgent:
         self.reward = 0.0
         self.profit_history = []
         self.update_frequency = self._get_update_frequency()
+        self.parameter_history = []
+        self.last_param_json = json.dumps(
+            {"pledge": self.pledge, "margin": self.margin, "cost": self.cost}
+        )
+        self.last_response_text = ""
+        self.last_thought = ""
+        self.history_window = history_window
+        self.adjustment_cap = adjustment_cap
 
     def _get_update_frequency(self) -> int:
         frequencies = {
@@ -28,14 +41,6 @@ class PoolAgent:
             "Corporate Pool": 8,
         }
         return frequencies.get(self.persona, 4)
-
-    def _get_persona_prompt(self) -> str:
-        prompts = {
-            "Community Builder": "You are a mission-driven community builder. You focus on providing value through content or tools and maintain fair, stable fees to build long-term trust. You avoid aggressive, profit-maximizing behavior.",
-            "Profit Maximizer": "Your goal is to maximize profit. You will aggressively adjust your margin and costs based on market dynamics. You might lower fees to attract stake when you are new, and raise them as you become established.",
-            "Corporate Pool": "You represent a large, professional staking operation. You prioritize reliability, security, and stability. You maintain a very high pledge and stable, competitive fees to attract institutional and risk-averse delegators. You do not engage in aggressive fee wars."
-        }
-        return prompts.get(self.persona, "You are a standard pool operator.")
 
     def compute_reward(self, total_rewards, s_opt, a0):
         # This formula calculates the pool's total reward for an epoch.
@@ -61,20 +66,87 @@ class PoolAgent:
 
     def update_parameters(self, current_round: int):
         if current_round % self.update_frequency != 0:
+            self._store_parameters(current_round, self.pledge, self.margin, self.cost)
             return # Skip updating strategy this round
 
-        prompt = (
-            f"You are the operator of pool {self.pool_id}.\n"
-            f"Your persona is: {self.persona}. {self._get_persona_prompt()}\n\n"
-            f"Current parameters: pledge={self.pledge:.1f}, margin={self.margin:.2f}, cost={self.cost:.1f}\n"
-            f"Total delegated stake: {self.stake_delegated:.1f}\n"
-            f"Current pool reward: {self.reward:.1f}\n"
-            "Suggest new parameters to improve profitability, keeping your persona in mind.\n"
+        persona_prompt = get_pool_persona_prompt(self.persona)
+        system_prompt = build_pool_system_prompt(
+            self.persona,
+            persona_prompt,
+            self.adjustment_cap,
+            self.history_window,
+            "1-2%",
         )
-        structured_llm = self.llm.with_structured_output(PoolAgentReturn)
-        resp = structured_llm.invoke([HumanMessage(content=prompt)])
-        pledge, margin, cost = resp.pledge, resp.margin, resp.cost
-        self.pledge = max(0, pledge)
-        self.margin = min(max(0, margin), 1)
-        self.cost = max(0, cost)
+        recent_history = self._build_recent_history()
+        prompt = build_pool_decision_prompt(
+            pool_id=self.pool_id,
+            pledge=self.pledge,
+            margin=self.margin,
+            cost=self.cost,
+            stake_delegated=self.stake_delegated,
+            reward=self.reward,
+            recent_history=recent_history,
+        )
+        response = self.llm.chat(prompt, system_prompt=system_prompt)
+        self.last_response_text = response
+        self.last_thought = self._extract_thought(response)
+        params = self._extract_parameters(response)
 
+        if params is None:
+            params = (self.pledge, self.margin, self.cost)
+
+        pledge, margin, cost = params
+        self.pledge = max(0.0, self._limit_step(self.pledge, pledge))
+        self.margin = min(max(0.0, self._limit_step(self.margin, margin)), 1.0)
+        self.cost = max(0.0, self._limit_step(self.cost, cost))
+        self._store_parameters(current_round, self.pledge, self.margin, self.cost)
+
+    def _build_recent_history(self) -> str:
+        if not self.profit_history or not self.parameter_history:
+            return "No completed rounds yet."
+        lines = []
+        for idx, (params, profit) in enumerate(
+            zip(self.parameter_history, self.profit_history), start=1
+        ):
+            lines.append(
+                f"Round {idx}: pledge={params['pledge']:.1f}, margin={params['margin']:.3f}, "
+                f"cost={params['cost']:.1f}, profit={profit:.2f}"
+            )
+        return "\n".join(lines[-self.history_window:])
+
+    def _extract_parameters(self, text: str):
+        pledge_match = re.search(r"PLEDGE\s*::\s*([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        margin_match = re.search(r"MARGIN\s*::\s*([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+        cost_match = re.search(r"COST\s*::\s*([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
+
+        if not (pledge_match and margin_match and cost_match):
+            return None
+
+        return (
+            float(pledge_match.group(1)),
+            float(margin_match.group(1)),
+            float(cost_match.group(1)),
+        )
+
+    def _extract_thought(self, text: str) -> str:
+        match = re.search(
+            r"THOUGHT\s*:\s*(.*?)\n\s*PARAMS",
+            text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        return match.group(1).strip() if match else ""
+
+    def _store_parameters(self, current_round: int, pledge: float, margin: float, cost: float) -> None:
+        params_dict = {"pledge": pledge, "margin": margin, "cost": cost}
+        if current_round < len(self.parameter_history):
+            self.parameter_history[current_round] = params_dict
+        else:
+            self.parameter_history.append(params_dict)
+        self.last_param_json = json.dumps(params_dict)
+
+    def _limit_step(self, previous: float, proposed: float) -> float:
+        if previous <= 0:
+            return proposed
+        max_delta = previous * self.adjustment_cap
+        delta = max(min(proposed - previous, max_delta), -max_delta)
+        return previous + delta
