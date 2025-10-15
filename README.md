@@ -1,90 +1,90 @@
 # Cardano Stake Pool Simulation
 
-This project simulates the behavior of Cardano stake pools and delegators in a multi-round environment. It models how users with different personas split their stake and how pool operators with different strategies adjust their parameters to maximize profitability. The simulation uses an LLM (e.g., GPT-4o) to imitate the decision-making processes of these agents.
+This repository contains a multi-round simulation of Cardano stake pools and delegators powered by large language models (LLMs). Pool operators adjust their parameters in response to market signals, delegators rebalance their stake, and the simulation records the resulting network dynamics round by round.
 
 ---
 
-## 🔧 Features
-- Realistic agent personas cover decentralization advocates, mission-driven operators, and profit maximizers.
-- Configurable simulations via command-line arguments for rounds, users, and pools.
-- Network-controlled saturation size (`S_OPT`) keeps pool capacity fixed for each experiment.
-- Power-law stake distribution ensures heterogeneous initial wealth that sums to `saturation_size * number_of_pools`.
-- Users may delegate to multiple pools each round, and allocations are normalized against their total stake.
-- Round briefings notify every user of pool parameters, current delegations, saturation size, and the previous round's rewards.
-- Uses the OpenAI-compatible API to talk to a local Ollama server by default.
-- Detailed logging writes human-readable and structured artifacts for analysis.
+## 🚀 At a Glance
+- Multi-round environment where delegators and pool operators react to shared network briefings.
+- Pool operators and delegators are persona-driven agents that call an OpenAI-compatible LLM to justify and execute their decisions.
+- Delegator wealth follows a configurable power-law distribution; stake can be split across multiple pools every round.
+- Each run logs full round transcripts, JSON state history, and inequality metrics (Gini coefficients) for later analysis.
 
 ---
 
-## 🧩 Network Rules Modeled
-- Saturation size is defined by the network in `constants.py` and cannot be changed by users or pools during a run.
-- Each user's starting funds follow a power-law distribution while preserving the total `saturation_size * num_pools` balance.
-- Delegators may split their stake across any number of pools in a round.
-- Before each round, the simulation broadcasts a briefing containing pool parameters (current), per-user delegations (current), the network saturation size, and each pool's reward from the prior round.
+## 📂 Project Layout
+- `main.py` – CLI entry point; parses arguments and starts a simulation run.
+- `simulation.py` – Orchestrates rounds, builds network briefings, aggregates rewards, and streams logs/results to `results/<timestamp>/`.
+- `pool_agents.py` – Persona-aware stake pool operators that revise pledge, margin, and cost after each round via an LLM call.
+- `user_agents.py` – Delegator personas that decide how to split stake across pools. Ensure this module is available before running the simulation.
+- `constants.py` – Network-wide parameters (`TOTAL_REWARDS`, `S_OPT`, `A0`) used in the Cardano reward formula.
 
 ---
 
-## 📦 Prerequisites
-- Python 3.8 or newer
-- An OpenAI-compatible API key with access to a model such as GPT-4o or Groq's LLaMA variants.
+## 📦 Requirements
+- Python 3.10 or newer.
+- Dependencies listed in `requirements.txt` (`pip install -r requirements.txt`).  
+  If your `user_agents.py` relies on `pydantic`, install it alongside the listed packages.
+- An OpenAI-compatible endpoint. By default the code targets a local Ollama server.
 
 ---
 
-## 🛠 Installation
-1. **Clone the repository:**
+## 🔧 Setup
+1. **Clone the repository**
    ```bash
-   git clone [your-repository-url]
-   cd [repository-name]
+   git clone <repo-url>
+   cd Cardano
    ```
-
-2. **Install dependencies:**
+2. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
-
-3. **Create a `.env` file** in the project root and add your API key:
+3. **Configure environment variables**  
+   Create a `.env` file in the repository root (or export the variables in your shell):
    ```env
-   OPENAI_API_KEY=your-api-key-here
+   OLLAMA_BASE_URL=http://localhost:11434/v1
+   OLLAMA_API_KEY=ollama
+   OLLAMA_MODEL=qwen2.5:7b-instruct
+   LLM_TEMPERATURE=0.0
    ```
+   To use OpenAI or another provider, set `OLLAMA_BASE_URL` to the service URL and provide the corresponding API key.
 
 ---
 
-## ▶️ Usage
-1. **Run the simulation** from the command line:
-   ```bash
-   python main.py --rounds 10 --users 50 --pools 5
-   ```
-   - `--rounds`: Number of simulation rounds.
-   - `--users`: Number of delegators.
-   - `--pools`: Number of stake pools.
+## ▶️ Run a Simulation
+```bash
+python main.py --rounds 10 --users 50 --pools 5
+```
+- `--rounds` – number of epochs to simulate (default `2`).
+- `--users` – delegator count (default `2`).
+- `--pools` – active stake pools (default `2`).
 
-   Each run creates a timestamped subfolder in `results/` (e.g., `results/20250629-170603/`) containing:
-   - `simulation_log.txt`
-   - `simulation_results.json`
-
-   Round briefings shared with delegates are captured in both the log and the JSON history (`briefing` field).
-
-2. **Analyze the results** by pointing the analysis script to the generated folder:
-   ```bash
-   python analyze.py results/20250629-170603
-   ```
-   This produces an `analysis_chart.png` file summarizing market dynamics.
+Each delegator and pool operator triggers an LLM request per decision, so larger runs can take time and consume credits when using paid endpoints.
 
 ---
 
-## ⚙️ Configuration
-- **Simulation parameters**: Adjust rounds, users, and pools using the command-line arguments.
-- **Agent personas**: Modify persona definitions and behavior prompts in `user_agents.py` and `pool_agents.py`.
-- **Network constants**: Edit `TOTAL_REWARDS`, `S_OPT`, and `A0` in `constants.py` to explore alternative network settings.
-- **LLM selection**: By default the simulation connects to a local Ollama server via the OpenAI-compatible API and loads the `qwen2.5:7b-instruct` model. Override `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, or `LLM_TEMPERATURE` to tune the setup.
+## 📊 Outputs
+Every run creates a timestamped folder under `results/`, e.g. `results/20251015-104646/`, containing:
+- `simulation_log.txt` – human-readable round summaries, briefings, and agent actions.
+- `simulation_results.json` – structured state snapshots per round, including allocations, rewards, and Gini metrics.
+
+The console also streams delegation decisions and the latest inequality metrics to help monitor long simulations.
 
 ---
 
-## 📁 Output
-All output is saved inside `results/`:
-- `.txt`: Human-readable log of rounds, broadcasts, agent actions, and outcomes.
-- `.json`: Structured history including per-round briefings, allocations, and rewards.
-- `.png`: Optional charts generated by the analysis script.
+## ⚙️ Customize the Model
+- **CLI parameters** – Adjust rounds, users, and pools per invocation.
+- **Network constants** – Tweak `TOTAL_REWARDS`, `S_OPT`, and `A0` in `constants.py` to explore alternative reward curves.
+- **Stake distribution** – Update `generate_powerlaw_stakes` in `simulation.py` (alpha, min/max stake, seed) to change the initial wealth profile.
+- **Agent personas** – Edit persona weights/prompts in `simulation.py`, `user_agents.py`, and `pool_agents.py` to model new behaviors.
+- **LLM configuration** – Override `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, `OLLAMA_API_KEY`, or `LLM_TEMPERATURE` in the environment.
+
+---
+
+## ❗️ Notes
+- The simulation is synchronous and runs entirely on the local machine; provide a responsive LLM endpoint to keep rounds moving.
+- Logs are rewritten after each round to avoid partial files; keep the process running until completion to capture the full history.
+- The repository ignores the `results/` directory by default. Add generated artifacts to version control only if you need to share them.
 
 ---
 
@@ -95,90 +95,91 @@ MIT License
 
 # 卡尔达诺质押池模拟
 
-该项目在多轮环境中模拟 Cardano 质押池与委托者的行为。它刻画了不同人格特质的用户如何分配其质押份额，以及不同策略的池运营者如何调整参数以最大化利润。模拟依赖大语言模型来模仿这些代理的决策过程。
+该仓库实现了一个依赖大语言模型的多轮 Cardano 质押池模拟。质押池运营者会根据市场信号调整参数，委托者会重新分配质押，系统逐轮记录网络动态。
 
 ---
 
-## 🔧 功能亮点
-- 覆盖去中心化拥护者、使命驱动运营者和利润最大化者等真实代理人格。
-- 通过命令行参数灵活配置轮数、用户数量和质押池数量。
-- 网络控制的饱和大小（`S_OPT`）对每次实验固定，可避免用户或池自行修改。
-- 用户初始资金遵循幂律分布，同时总额保持为 `saturation_size * number_of_pools`。
-- 委托者每轮可以把资金拆分到多个质押池，系统会自动规范化其总额不超出余额。
-- 每轮开始前都会向所有用户广播通告，包含池参数、用户委托分布、网络饱和大小以及上一轮的池奖励。
-- 默认通过 OpenAI 兼容接口调用本地 Ollama 模型。
-- 提供详细日志，兼顾可读性和结构化分析需求。
+## 🚀 核心特点
+- 多轮博弈环境：委托者与运营者都会响应网络通报做出决策。
+- 质押池与委托者均由设定的人格驱动，通过 OpenAI 兼容接口调用 LLM 给出理由与操作。
+- 委托者初始资产遵循可配置的幂律分布，并可在每轮把筹码拆分到多个池。
+- 每次运行都会生成日志、结构化 JSON 历史，以及用于衡量不平等的 Gini 系数。
 
 ---
 
-## 🧩 网络规则
-- 饱和大小在 `constants.py` 中由网络预设，运行过程中用户和池均无法修改。
-- 用户初始资金符合幂律分布，并严格保持总额为 `saturation_size * num_pools`。
-- 委托者可在任意一轮将资金分配到多个质押池。
-- 每轮广播会说明当前池参数、当前的用户委托情况、网络饱和大小以及上一轮的池奖励。
+## 📂 目录结构
+- `main.py`：命令行入口，解析参数并启动模拟。
+- `simulation.py`：统筹每一轮，构建网络通报，汇总奖励，并把结果写入 `results/<timestamp>/`。
+- `pool_agents.py`：基于人格的质押池运营者，借助 LLM 调整 pledge、margin 与 cost。
+- `user_agents.py`：委托者人格与分配策略实现。运行前请确认该模块可用。
+- `constants.py`：Cardano 奖励公式所需的网络常量（`TOTAL_REWARDS`、`S_OPT`、`A0`）。
 
 ---
 
 ## 📦 环境要求
-- Python 3.8 及以上版本
+- Python 3.10 及以上版本。
+- 运行 `pip install -r requirements.txt` 安装依赖。  
+  如果 `user_agents.py` 用到了 `pydantic`，请额外安装该库。
+- 一个 OpenAI 兼容的推理接口；默认使用本地 Ollama 服务。
 
 ---
 
-## 🛠 安装步骤
-1. **克隆仓库：**
+## 🔧 初始化
+1. **克隆仓库**
    ```bash
-   git clone [your-repository-url]
-   cd [repository-name]
+   git clone <repo-url>
+   cd Cardano
    ```
-
-2. **安装依赖：**
+2. **安装依赖**
    ```bash
    pip install -r requirements.txt
    ```
-
-3. **创建 `.env` 文件** 并写入 API Key：
+3. **配置环境变量**  
+   在仓库根目录创建 `.env`（或直接在 shell 中导出）：
    ```env
-   OPENAI_API_KEY=your-api-key-here
+   OLLAMA_BASE_URL=http://localhost:11434/v1
+   OLLAMA_API_KEY=ollama
+   OLLAMA_MODEL=qwen2.5:7b-instruct
+   LLM_TEMPERATURE=0.0
    ```
+   如需调用 OpenAI 等外部服务，请将 `OLLAMA_BASE_URL` 改为对应地址并提供有效的 API Key。
 
 ---
 
-## ▶️ 使用方式
-1. **运行模拟：**
-   ```bash
-   python main.py --rounds 10 --users 50 --pools 5
-   ```
-   - `--rounds`：模拟轮数。
-   - `--users`：委托者数量。
-   - `--pools`：质押池数量。
+## ▶️ 运行模拟
+```bash
+python main.py --rounds 10 --users 50 --pools 5
+```
+- `--rounds`：模拟轮数（默认 `2`）。
+- `--users`：委托者数量（默认 `2`）。
+- `--pools`：质押池数量（默认 `2`）。
 
-   每次运行会在 `results/` 下创建时间戳目录（如 `results/20250629-170603/`），其中包含：
-   - `simulation_log.txt`
-   - `simulation_results.json`
-
-   广播内容同样会写入日志和 JSON (`briefing` 字段)。
-
-2. **结果分析：**
-   ```bash
-   python analyze.py results/20250629-170603
-   ```
-   将在对应目录生成 `analysis_chart.png`，展现市场动态概览。
+每位委托者与运营者在每轮都会触发一次 LLM 请求，规模较大的实验需要更多时间与算力（或 API 额度）。
 
 ---
 
-## ⚙️ 配置说明
-- **模拟参数**：通过命令行调整轮数、用户数和池数。
-- **代理人格**：在 `user_agents.py` 与 `pool_agents.py` 中修改人格配置与提示词。
-- **网络常量**：在 `constants.py` 中调整 `TOTAL_REWARDS`、`S_OPT`、`A0` 等参数以测试不同网络设置。
-- **LLM 选择**：默认通过 OpenAI 兼容接口连接本地 Ollama 并加载 `qwen2.5:7b-instruct`。可通过 `OLLAMA_MODEL`、`OLLAMA_BASE_URL` 或 `LLM_TEMPERATURE` 自定义模型与接口参数。
+## 📊 输出结果
+运行结束后会在 `results/` 下生成时间戳目录（例如 `results/20251015-104646/`），包含：
+- `simulation_log.txt`：便于阅读的轮次记录、广播内容与代理行为。
+- `simulation_results.json`：结构化的轮次快照，涵盖委托分配、奖励与 Gini 指标。
+
+命令行会实时输出委托分配与最新的 Gini 系数，方便监控长时间运行的实验。
 
 ---
 
-## 📁 输出内容
-所有输出保存在 `results/` 目录：
-- `.txt`：包含轮次、广播、代理行为与结果的可读日志。
-- `.json`：结构化历史数据，含每轮广播及分配详情。
-- `.png`：通过分析脚本生成的可选图表。
+## ⚙️ 自定义选项
+- **命令行参数**：按需调整轮数、用户和质押池数量。
+- **网络常量**：在 `constants.py` 修改 `TOTAL_REWARDS`、`S_OPT`、`A0` 以探索不同奖励曲线。
+- **筹码分布**：在 `simulation.py` 的 `generate_powerlaw_stakes` 中调整幂律参数、最小/最大值与随机种子。
+- **人格与提示词**：在 `simulation.py`、`user_agents.py`、`pool_agents.py` 中修改人格比例和提示内容。
+- **LLM 设置**：通过环境变量覆盖 `OLLAMA_MODEL`、`OLLAMA_BASE_URL`、`OLLAMA_API_KEY`、`LLM_TEMPERATURE`。
+
+---
+
+## ❗️ 使用提示
+- 模拟为同步执行，需要稳定、响应快的 LLM 服务以保证每轮顺利运行。
+- 日志文件会在每轮结束后整体重写；请在运行结束后再读取结果以避免截断。
+- 仓库默认忽略 `results/`；若需共享实验产出，可自行把需要的文件纳入版本控制。
 
 ---
 
