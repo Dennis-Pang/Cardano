@@ -1,126 +1,186 @@
 # Cardano Stake Pool Simulation
 
-This project simulates a multi-round Cardano staking market where every participant is modelled as a single **Stakeholder**. Stakeholders may operate a pool, delegate to others, or do both. The engine implements the Shelley Reward Sharing Scheme (RSS), incorporates switching friction, applies pledge incentives, and tracks market concentration metrics (HHI, Nakamoto coefficient) each epoch. Results are streamed to disk so runs remain analyzable even if interrupted.
+This project simulates the behavior of Cardano stake pools and delegators in a multi-round environment. It models how users with different personas split their stake and how pool operators with different strategies adjust their parameters to maximize profitability. The simulation uses an LLM (e.g., GPT-4o) to imitate the decision-making processes of these agents.
 
 ---
 
-## 🚀 Quick Reference
-
-- **Python version:** 3.13 (see `.venv/`)
-- **Entry point:** `python main.py`
-- **Outputs:** Timestamped folders under `results/`
+## 🔧 Features
+- Realistic agent personas cover decentralization advocates, mission-driven operators, and profit maximizers.
+- Configurable simulations via command-line arguments for rounds, users, and pools.
+- Network-controlled saturation size (`S_OPT`) keeps pool capacity fixed for each experiment.
+- Power-law stake distribution ensures heterogeneous initial wealth that sums to `saturation_size * number_of_pools`.
+- Users may delegate to multiple pools each round, and allocations are normalized against their total stake.
+- Round briefings notify every user of pool parameters, current delegations, saturation size, and the previous round's rewards.
+- Uses the OpenAI-compatible API to talk to a local Ollama server by default.
+- Detailed logging writes human-readable and structured artifacts for analysis.
 
 ---
 
-## 📦 Environment Setup
+## 🧩 Network Rules Modeled
+- Saturation size is defined by the network in `constants.py` and cannot be changed by users or pools during a run.
+- Each user's starting funds follow a power-law distribution while preserving the total `saturation_size * num_pools` balance.
+- Delegators may split their stake across any number of pools in a round.
+- Before each round, the simulation broadcasts a briefing containing pool parameters (current), per-user delegations (current), the network saturation size, and each pool's reward from the prior round.
 
-1. **Clone the repository** (or drop the files into your workspace).
-2. **Create / refresh the virtual environment** (Python 3.13):
+---
+
+## 📦 Prerequisites
+- Python 3.8 or newer
+- An OpenAI-compatible API key with access to a model such as GPT-4o or Groq's LLaMA variants.
+
+---
+
+## 🛠 Installation
+1. **Clone the repository:**
    ```bash
-   python3.13 -m venv .venv
-   source .venv/bin/activate
-   pip install --upgrade pip
+   git clone [your-repository-url]
+   cd [repository-name]
+   ```
+
+2. **Install dependencies:**
+   ```bash
    pip install -r requirements.txt
    ```
-3. **Optional configuration**  
-   Create a `.env` file to override defaults (e.g., `CARDANO_MIGRATION_RATE`, `CARDANO_SHOCK_INTERVAL`, `CARDANO_REWARD_NOISE_STD`).
 
----
-
-## 🧠 Round Structure
-
-Each epoch executes the following sequence:
-
-1. **Stake aggregation** – Stakeholders contribute pledge (if they operate a pool) and current delegations to build the pool stake table.
-2. **Reward computation** – The Shelley Reward Sharing Scheme is evaluated using the configured `TOTAL_REWARDS`, `k = 1/ S_OPT`, and `a₀`. A light Gaussian noise term is applied to mimic network variability.
-3. **Payout distribution** – Fixed costs and margins are deducted, the operator receives pledge-linked rewards, and delegators split the remaining pot proportionally.
-4. **Behavioural updates** – A small migration cohort (default 5%) re-evaluates pools based on the latest net ROI. The rest remain inert, preserving realistic friction. Optional structural shocks (default every 50 rounds) tweak fees and costs.
-5. **Metrics & persistence** – Logs are streamed to disk, concentration metrics (HHI, Nakamoto coefficient) are recorded, and a snapshot of pools/stakeholders is appended to `simulation_results.json`.
-
----
-
-## ▶️ Running a Simulation
-
-1. Activate the environment:
-   ```bash
-   source .venv/bin/activate
+3. **Create a `.env` file** in the project root and add your API key:
+   ```env
+   OPENAI_API_KEY=your-api-key-here
    ```
-2. Launch the run with desired scale:
+
+---
+
+## ▶️ Usage
+1. **Run the simulation** from the command line:
    ```bash
-   python main.py --rounds 100 --users 300 --pools 100
+   python main.py --rounds 10 --users 50 --pools 5
    ```
-   - `--rounds` – number of epochs (50–300 recommended)
-  - `--users` – total stakeholders (operators + delegators)
-   - `--pools` – number of pools (each backed by a stakeholder operator)
-3. Inspect the generated `results/<timestamp>/` directory for the logs and JSON payload.
-4. Optional: craft custom scripts to post-process the JSON or visualise trends.
+   - `--rounds`: Number of simulation rounds.
+   - `--users`: Number of delegators.
+   - `--pools`: Number of stake pools.
+
+   Each run creates a timestamped subfolder in `results/` (e.g., `results/20250629-170603/`) containing:
+   - `simulation_log.txt`
+   - `simulation_results.json`
+
+   Round briefings shared with delegates are captured in both the log and the JSON history (`briefing` field).
+
+2. **Analyze the results** by pointing the analysis script to the generated folder:
+   ```bash
+   python analyze.py results/20250629-170603
+   ```
+   This produces an `analysis_chart.png` file summarizing market dynamics.
 
 ---
 
-## 🔧 Customisation Tips
-
-- **Economics:** Tune `TOTAL_REWARDS`, `S_OPT`, and `A0` in `constants.py` to explore different decentralisation targets.
-- **Behaviour knobs:** Override env vars such as `CARDANO_MIGRATION_RATE`, `CARDANO_IMPROVEMENT_THRESHOLD`, or `CARDANO_REWARD_NOISE_STD` to adjust cohort inertia and volatility.
-- **Shock modelling:** Use `CARDANO_SHOCK_INTERVAL` and `CARDANO_SHOCK_COST_DELTA` to script structural events.
-- **Data exports:** Extend `simulation.py` if you need additional metrics or alternative serialisation formats.
+## ⚙️ Configuration
+- **Simulation parameters**: Adjust rounds, users, and pools using the command-line arguments.
+- **Agent personas**: Modify persona definitions and behavior prompts in `user_agents.py` and `pool_agents.py`.
+- **Network constants**: Edit `TOTAL_REWARDS`, `S_OPT`, and `A0` in `constants.py` to explore alternative network settings.
+- **LLM selection**: By default the simulation connects to a local Ollama server via the OpenAI-compatible API and loads the `qwen2.5:7b-instruct` model. Override `OLLAMA_MODEL`, `OLLAMA_BASE_URL`, or `LLM_TEMPERATURE` to tune the setup.
 
 ---
 
-## ✅ Verification
-
-- Compile check: `python -m compileall Cardano`
+## 📁 Output
+All output is saved inside `results/`:
+- `.txt`: Human-readable log of rounds, broadcasts, agent actions, and outcomes.
+- `.json`: Structured history including per-round briefings, allocations, and rewards.
+- `.png`: Optional charts generated by the analysis script.
 
 ---
 
 ## 📄 License
-
 MIT License
 
 ---
 
-## 🇨🇳 中文对照指南
+# 卡尔达诺质押池模拟
 
-### 项目概述
-本项目将所有参与者统一建模为 Stakeholder，涵盖开池者与普通委托人。在每个结算周期中，系统依据 Shelley Reward Sharing Scheme 计算奖励、考虑 pledge 激励与超饱和惩罚，并输出 HHI、Nakamoto 系数等集中度指标。
+该项目在多轮环境中模拟 Cardano 质押池与委托者的行为。它刻画了不同人格特质的用户如何分配其质押份额，以及不同策略的池运营者如何调整参数以最大化利润。模拟依赖大语言模型来模仿这些代理的决策过程。
 
-### 快速参考
-- Python 版本：3.13（位于 `.venv/` 虚拟环境）
-- 入口脚本：`python main.py`
-- 输出目录：`results/` 下的时间戳子目录
+---
 
-### 环境配置步骤
-1. 克隆仓库或将文件放入工作目录。
-2. 创建并激活 Python 3.13 虚拟环境，安装依赖：
+## 🔧 功能亮点
+- 覆盖去中心化拥护者、使命驱动运营者和利润最大化者等真实代理人格。
+- 通过命令行参数灵活配置轮数、用户数量和质押池数量。
+- 网络控制的饱和大小（`S_OPT`）对每次实验固定，可避免用户或池自行修改。
+- 用户初始资金遵循幂律分布，同时总额保持为 `saturation_size * number_of_pools`。
+- 委托者每轮可以把资金拆分到多个质押池，系统会自动规范化其总额不超出余额。
+- 每轮开始前都会向所有用户广播通告，包含池参数、用户委托分布、网络饱和大小以及上一轮的池奖励。
+- 默认通过 OpenAI 兼容接口调用本地 Ollama 模型。
+- 提供详细日志，兼顾可读性和结构化分析需求。
+
+---
+
+## 🧩 网络规则
+- 饱和大小在 `constants.py` 中由网络预设，运行过程中用户和池均无法修改。
+- 用户初始资金符合幂律分布，并严格保持总额为 `saturation_size * num_pools`。
+- 委托者可在任意一轮将资金分配到多个质押池。
+- 每轮广播会说明当前池参数、当前的用户委托情况、网络饱和大小以及上一轮的池奖励。
+
+---
+
+## 📦 环境要求
+- Python 3.8 及以上版本
+
+---
+
+## 🛠 安装步骤
+1. **克隆仓库：**
    ```bash
-   python3.13 -m venv .venv
-   source .venv/bin/activate
-   pip install --upgrade pip
+   git clone [your-repository-url]
+   cd [repository-name]
+   ```
+
+2. **安装依赖：**
+   ```bash
    pip install -r requirements.txt
    ```
-3. （可选）在 `.env` 中写入参数，例如 `CARDANO_MIGRATION_RATE`、`CARDANO_SHOCK_INTERVAL`。
 
-### 轮次流程
-1. 汇总质押：池运营者投入 pledge，所有 Stakeholder 的委托写入当前池的总质押。
-2. 计算奖励：调用 Shelley RSS 公式，并加入轻度噪声模拟网络波动。
-3. 发放收益：扣除固定成本和 margin，运营者获得 pledge 奖励，其余按份额分配给委托人。
-4. 行为更新：仅约 5% 委托人重新评估池子，其余保持原状；可配置的结构性冲击每隔若干轮触发。
-5. 指标输出：记录 HHI、Nakamoto 等集中度指标，并实时写入日志与 JSON。
+3. **创建 `.env` 文件** 并写入 API Key：
+   ```env
+   OPENAI_API_KEY=your-api-key-here
+   ```
 
-### 运行仿真
-```bash
-source .venv/bin/activate
-python main.py --rounds 100 --users 300 --pools 100
-```
-参数含义：`--rounds` 为轮次数（建议 50–300），`--users` 表示 Stakeholder 总数（包含运营者），`--pools` 为质押池数量。运行过程中日志会实时写入磁盘，可在中断后继续分析。
+---
 
-### 自定义建议
-- **经济参数**：在 `constants.py` 中调整 `TOTAL_REWARDS`、`S_OPT`、`A0`。
-- **行为参数**：通过环境变量（如 `CARDANO_MIGRATION_RATE`、`CARDANO_IMPROVEMENT_THRESHOLD`、`CARDANO_REWARD_NOISE_STD`）修改迁移率、收益噪声。
-- **冲击设置**：`CARDANO_SHOCK_INTERVAL`、`CARDANO_SHOCK_COST_DELTA` 用于控制结构性冲击。
-- **扩展输出**：可按需修改 `simulation.py` 增加额外指标或数据导出。
+## ▶️ 使用方式
+1. **运行模拟：**
+   ```bash
+   python main.py --rounds 10 --users 50 --pools 5
+   ```
+   - `--rounds`：模拟轮数。
+   - `--users`：委托者数量。
+   - `--pools`：质押池数量。
 
-### 验证步骤
-- 语法检查：`python -m compileall Cardano`
+   每次运行会在 `results/` 下创建时间戳目录（如 `results/20250629-170603/`），其中包含：
+   - `simulation_log.txt`
+   - `simulation_results.json`
 
-### 许可证
-MIT 许可协议
+   广播内容同样会写入日志和 JSON (`briefing` 字段)。
+
+2. **结果分析：**
+   ```bash
+   python analyze.py results/20250629-170603
+   ```
+   将在对应目录生成 `analysis_chart.png`，展现市场动态概览。
+
+---
+
+## ⚙️ 配置说明
+- **模拟参数**：通过命令行调整轮数、用户数和池数。
+- **代理人格**：在 `user_agents.py` 与 `pool_agents.py` 中修改人格配置与提示词。
+- **网络常量**：在 `constants.py` 中调整 `TOTAL_REWARDS`、`S_OPT`、`A0` 等参数以测试不同网络设置。
+- **LLM 选择**：默认通过 OpenAI 兼容接口连接本地 Ollama 并加载 `qwen2.5:7b-instruct`。可通过 `OLLAMA_MODEL`、`OLLAMA_BASE_URL` 或 `LLM_TEMPERATURE` 自定义模型与接口参数。
+
+---
+
+## 📁 输出内容
+所有输出保存在 `results/` 目录：
+- `.txt`：包含轮次、广播、代理行为与结果的可读日志。
+- `.json`：结构化历史数据，含每轮广播及分配详情。
+- `.png`：通过分析脚本生成的可选图表。
+
+---
+
+## 📄 许可证
+MIT License
